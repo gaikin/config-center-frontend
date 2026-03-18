@@ -16,8 +16,79 @@ type DropReminder = {
   detail: string;
 };
 
+type DashboardPalette = {
+  pageBg: string;
+  pageBorder: string;
+  panelBg: string;
+  panelBorder: string;
+  panelBorderSoft: string;
+  heroBg: string;
+  heroBorder: string;
+  heroTitle: string;
+  heroText: string;
+  heroTagBg: string;
+  heroTagBorder: string;
+  heroTagText: string;
+  heroButtonBg: string;
+  heroButtonBorder: string;
+  heroButtonHoverBg: string;
+  heroButtonHoverBorder: string;
+  headerHint: string;
+  metricTones: [string, string, string, string];
+};
+
+const dashboardPalette: DashboardPalette = {
+  pageBg: "linear-gradient(180deg, #f8fafd 0%, #f3f7fb 100%)",
+  pageBorder: "#d9e3ee",
+  panelBg: "#fdfefe",
+  panelBorder: "#d8e2ed",
+  panelBorderSoft: "#e4ebf3",
+  heroBg: "linear-gradient(135deg, #f7fafd 0%, #eef4fa 100%)",
+  heroBorder: "#d4dfeb",
+  heroTitle: "#223142",
+  heroText: "#4a5d72",
+  heroTagBg: "#ecf3fa",
+  heroTagBorder: "#c8d7e7",
+  heroTagText: "#37506a",
+  heroButtonBg: "#e8f1f8",
+  heroButtonBorder: "#c2d5e7",
+  heroButtonHoverBg: "#dae9f4",
+  heroButtonHoverBorder: "#a8c1d8",
+  headerHint: "#4b5f74",
+  metricTones: [
+    "linear-gradient(90deg, #6c88a8 0%, #89a3bf 100%)",
+    "linear-gradient(90deg, #9a8567 0%, #b09b7c 100%)",
+    "linear-gradient(90deg, #6f8095 0%, #8d9db2 100%)",
+    "linear-gradient(90deg, #96747a 0%, #af8a90 100%)"
+  ]
+};
+
+const DashboardShell = styled.div<{ $palette: DashboardPalette }>`
+  border-radius: 12px;
+  border: 1px solid ${({ $palette }) => $palette.pageBorder};
+  background: ${({ $palette }) => $palette.pageBg};
+  padding: var(--space-16);
+
+  @media (max-width: 768px) {
+    padding: var(--space-12);
+  }
+`;
+
 const PageHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-12);
   margin-bottom: var(--space-24);
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    margin-bottom: var(--space-16);
+  }
+`;
+
+const HeaderMain = styled.div`
+  min-width: 0;
 `;
 
 const PageTitle = styled(Typography.Title)`
@@ -29,16 +100,16 @@ const PageTitle = styled(Typography.Title)`
 const PageIntro = styled(Typography.Paragraph)`
   && {
     margin: var(--space-8) 0 0;
-    color: var(--color-text-secondary);
+    color: var(--dash-header-hint);
   }
 `;
 
 const HeroCard = styled(Card)`
   margin-bottom: var(--space-16);
-  border: 0;
+  border: 1px solid var(--dash-hero-border);
   overflow: hidden;
-  background: linear-gradient(125deg, rgba(15, 31, 77, 0.97) 0%, rgba(27, 99, 240, 0.95) 58%, rgba(16, 111, 143, 0.92) 100%);
-  box-shadow: var(--shadow-3);
+  background: var(--dash-hero-bg);
+  box-shadow: 0 6px 18px rgba(38, 46, 56, 0.08);
 
   .ant-card-body {
     padding: 20px 22px;
@@ -48,36 +119,36 @@ const HeroCard = styled(Card)`
 const HeroTitle = styled(Typography.Title)`
   && {
     margin: 0;
-    color: #f5f8ff;
+    color: var(--dash-hero-title);
   }
 `;
 
 const HeroIntro = styled(Typography.Paragraph)`
   && {
     margin: 8px 0 0;
-    color: rgba(245, 248, 255, 0.96);
+    color: var(--dash-hero-text);
   }
 `;
 
 const HeroSummaryTag = styled(Tag)`
-  border-radius: 999px;
+  border-radius: 6px;
   padding-inline: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  color: #f5f8ff;
-  background: rgba(8, 20, 48, 0.34);
+  border: 1px solid var(--dash-hero-tag-border);
+  color: var(--dash-hero-tag-text);
+  background: var(--dash-hero-tag-bg);
 `;
 
 const HeroActionButton = styled(Button)`
   margin-top: 8px;
-  color: #f5f8ff;
-  border-color: rgba(255, 255, 255, 0.56);
-  background: rgba(8, 20, 48, 0.42);
+  color: var(--dash-hero-tag-text);
+  border-color: var(--dash-hero-button-border);
+  background: var(--dash-hero-button-bg);
 
   &:hover,
   &:focus {
-    color: #f5f8ff !important;
-    border-color: rgba(255, 255, 255, 0.8) !important;
-    background: rgba(8, 20, 48, 0.58) !important;
+    color: var(--dash-hero-tag-text) !important;
+    border-color: var(--dash-hero-button-hover-border) !important;
+    background: var(--dash-hero-button-hover-bg) !important;
   }
 `;
 
@@ -101,7 +172,16 @@ const SectionRow = styled(Row)`
   margin-top: var(--space-16);
 `;
 
-const RecentCard = styled(Card)`
+const DataCard = styled(Card)`
+  border-color: var(--dash-panel-border);
+  background: var(--dash-panel-bg);
+
+  .ant-card-head {
+    border-bottom-color: var(--dash-panel-border-soft);
+  }
+`;
+
+const RecentCard = styled(DataCard)`
   margin-top: var(--space-16);
 `;
 
@@ -113,7 +193,7 @@ const ListSection = styled.div`
   margin-top: var(--space-12);
 `;
 
-const QuickActionCard = styled(Card)`
+const QuickActionCard = styled(DataCard)`
   .ant-btn {
     justify-content: flex-start;
   }
@@ -205,14 +285,36 @@ export function DashboardPage() {
         })),
     [pendingItems]
   );
+  const palette = dashboardPalette;
 
   return (
-    <div>
+    <DashboardShell
+      $palette={palette}
+      style={{
+        ["--dash-header-hint" as string]: palette.headerHint,
+        ["--dash-panel-bg" as string]: palette.panelBg,
+        ["--dash-panel-border" as string]: palette.panelBorder,
+        ["--dash-panel-border-soft" as string]: palette.panelBorderSoft,
+        ["--dash-hero-bg" as string]: palette.heroBg,
+        ["--dash-hero-border" as string]: palette.heroBorder,
+        ["--dash-hero-title" as string]: palette.heroTitle,
+        ["--dash-hero-text" as string]: palette.heroText,
+        ["--dash-hero-tag-bg" as string]: palette.heroTagBg,
+        ["--dash-hero-tag-border" as string]: palette.heroTagBorder,
+        ["--dash-hero-tag-text" as string]: palette.heroTagText,
+        ["--dash-hero-button-bg" as string]: palette.heroButtonBg,
+        ["--dash-hero-button-border" as string]: palette.heroButtonBorder,
+        ["--dash-hero-button-hover-bg" as string]: palette.heroButtonHoverBg,
+        ["--dash-hero-button-hover-border" as string]: palette.heroButtonHoverBorder
+      }}
+    >
       <PageHeader>
-        <PageTitle className="type-24">我的工作台</PageTitle>
-        <PageIntro className="type-14">
-          今天先看待处理和下降提醒，再从“菜单管理”进入主路径，继续完成配置、发布和结果查看。
-        </PageIntro>
+        <HeaderMain>
+          <PageTitle className="type-24">我的工作台</PageTitle>
+          <PageIntro className="type-14">
+            今天先看待处理和下降提醒，再从“菜单管理”进入主路径，继续完成配置、发布和结果查看。
+          </PageIntro>
+        </HeaderMain>
       </PageHeader>
 
       <HeroCard>
@@ -237,22 +339,22 @@ export function DashboardPage() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone="linear-gradient(90deg, #2162f3 0%, #4f8fff 100%)" loading={loading}>
+          <MetricCard $tone={palette.metricTones[0]} loading={loading}>
             <Statistic title="待发布事项" value={pendingSummary?.draftCount ?? 0} />
           </MetricCard>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone="linear-gradient(90deg, #d48726 0%, #f2b04a 100%)" loading={loading}>
+          <MetricCard $tone={palette.metricTones[1]} loading={loading}>
             <Statistic title="待确认事项" value={pendingSummary?.riskConfirmPendingCount ?? 0} />
           </MetricCard>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone="linear-gradient(90deg, #9050f3 0%, #bb8cff 100%)" loading={loading}>
+          <MetricCard $tone={palette.metricTones[2]} loading={loading}>
             <Statistic title="待补充配置" value={pendingSummary?.validationFailedCount ?? 0} />
           </MetricCard>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone="linear-gradient(90deg, #d63b5f 0%, #f16f89 100%)" loading={loading}>
+          <MetricCard $tone={palette.metricTones[3]} loading={loading}>
             <Statistic title="下降提醒" value={dropReminders.length} />
           </MetricCard>
         </Col>
@@ -260,7 +362,7 @@ export function DashboardPage() {
 
       <SectionRow gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card title="我的待处理" loading={loading}>
+          <DataCard title="我的待处理" loading={loading}>
             <Space wrap size={8}>
               <Tag>待发布 {pendingSummary?.draftCount ?? 0}</Tag>
               <Tag>待确认 {pendingSummary?.riskConfirmPendingCount ?? 0}</Tag>
@@ -281,11 +383,11 @@ export function DashboardPage() {
                 )}
               />
             </ListSection>
-          </Card>
+          </DataCard>
         </Col>
 
         <Col xs={24} lg={12}>
-          <Card title="运行提醒（触发下降）" loading={loading}>
+          <DataCard title="运行提醒（触发下降）" loading={loading}>
             <List
               size="small"
               dataSource={dropReminders}
@@ -300,9 +402,9 @@ export function DashboardPage() {
                     <Typography.Text type="secondary" className="card-info">{item.detail}</Typography.Text>
                   </Space>
                 </List.Item>
-              )}
-            />
-          </Card>
+                )}
+              />
+          </DataCard>
         </Col>
       </SectionRow>
 
@@ -339,7 +441,7 @@ export function DashboardPage() {
         </Col>
 
         <Col xs={24} lg={12}>
-          <Card title="业务看板" loading={loading}>
+          <DataCard title="业务看板" loading={loading}>
             <Row gutter={[16, 16]}>
               <Col span={12}>
                 <Statistic title="已启用页面数" value={overview?.pageResourceCount ?? 0} />
@@ -354,9 +456,9 @@ export function DashboardPage() {
                 <Statistic title="下降提醒数" value={dropReminders.length} />
               </Col>
             </Row>
-          </Card>
+          </DataCard>
         </Col>
       </SectionRow>
-    </div>
+    </DashboardShell>
   );
 }

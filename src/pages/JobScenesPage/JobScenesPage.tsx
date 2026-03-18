@@ -412,22 +412,22 @@ export function JobScenesPage() {
 
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #2465f2 0%, #58a2ff 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
             <Statistic title="作业场景总数" value={sceneSummary.total} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #8f55ed 0%, #bf8bff 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #4a617a 0%, #7387a0 100%)">
             <Statistic title="草稿场景" value={sceneSummary.draft} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #16945f 0%, #47b983 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
             <Statistic title="已启用" value={sceneSummary.active} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #ce7f27 0%, #e9b15b 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
             <Statistic title="已停用" value={sceneSummary.disabled} />
           </SummaryCard>
         </Col>

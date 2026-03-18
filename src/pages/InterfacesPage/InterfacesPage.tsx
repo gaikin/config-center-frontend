@@ -118,8 +118,8 @@ const StatStrip = styled.div`
 `;
 
 const StatTile = styled.div<{ $accent: string }>`
-  border: 1px solid var(--cc-border-subtle, rgba(27, 99, 240, 0.15));
-  border-radius: 10px;
+  border: 1px solid var(--cc-border-subtle, rgba(31, 75, 122, 0.18));
+  border-radius: 8px;
   padding: 8px 10px;
   background: ${({ $accent }) => $accent};
 
@@ -142,9 +142,9 @@ const WorkbenchCard = styled(Card)`
 const OutputJsonPreview = styled.pre`
   margin: 0;
   padding: 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(27, 99, 240, 0.12);
-  background: linear-gradient(180deg, #f7faff 0%, #fdfefe 100%);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, #f6f8fb 0%, #ffffff 100%);
   color: var(--color-text-primary);
   max-height: 420px;
   overflow: auto;
@@ -670,22 +670,22 @@ export function InterfacesPage() {
       ) : null}
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
         <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #2465f2 0%, #58a2ff 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
             <Statistic title="接口总数" value={statusSummary.total} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #8f55ed 0%, #bf8bff 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #4a617a 0%, #7387a0 100%)">
             <Statistic title="草稿接口" value={statusSummary.draft} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #16945f 0%, #47b983 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
             <Statistic title="已生效" value={statusSummary.active} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #ce7f27 0%, #e9b15b 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
             <Statistic title="已停用" value={statusSummary.disabled} />
           </SummaryCard>
         </Col>
@@ -961,15 +961,15 @@ export function InterfacesPage() {
                     message="Body JSON 是唯一结构来源"
                   />
                   <StatStrip>
-                    <StatTile $accent="linear-gradient(180deg, #F5F9FF 0%, #FFFFFF 100%)">
+                    <StatTile $accent="linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%)">
                       <Typography.Text type="secondary">请求参数总数</Typography.Text>
                       <Typography.Title level={5} style={{ margin: 0 }}>{requestParamTotal}</Typography.Title>
                     </StatTile>
-                    <StatTile $accent="linear-gradient(180deg, #F2FBF7 0%, #FFFFFF 100%)">
+                    <StatTile $accent="linear-gradient(180deg, #f2f6f3 0%, #ffffff 100%)">
                       <Typography.Text type="secondary">Body 字段数</Typography.Text>
                       <Typography.Title level={5} style={{ margin: 0 }}>{inputConfig.body.length}</Typography.Title>
                     </StatTile>
-                    <StatTile $accent="linear-gradient(180deg, #FFF8F1 0%, #FFFFFF 100%)">
+                    <StatTile $accent="linear-gradient(180deg, #f9f5ee 0%, #ffffff 100%)">
                       <Typography.Text type="secondary">返回字段数</Typography.Text>
                       <Typography.Title level={5} style={{ margin: 0 }}>{outputConfig.length}</Typography.Title>
                     </StatTile>

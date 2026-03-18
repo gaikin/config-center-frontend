@@ -61,13 +61,12 @@ const HeaderBar = styled(Header)`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(120deg, var(--color-top-region-bg) 0%, var(--color-top-region-bg-end) 100%);
+  background: linear-gradient(160deg, var(--color-top-region-bg) 0%, var(--color-top-region-bg-end) 100%);
   color: var(--color-top-region-text);
-  padding: var(--space-12) var(--space-24) var(--space-16);
-  min-height: 88px;
+  padding: var(--space-12) var(--space-24);
+  min-height: 76px;
   border-bottom: 1px solid var(--color-top-region-border);
   box-shadow: var(--shadow-1);
-  backdrop-filter: blur(8px);
 `;
 
 const LogoBlock = styled.div`
@@ -78,13 +77,14 @@ const LogoBlock = styled.div`
 
 const LogoPill = styled.span`
   width: fit-content;
-  border-radius: 999px;
-  padding: 2px 10px;
+  border-radius: 4px;
+  padding: 2px 8px;
   font-size: var(--font-12);
   line-height: var(--lh-12);
+  letter-spacing: 0.6px;
   color: var(--color-top-region-text);
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 `;
 
 const LogoTitle = styled(Typography.Text)`
@@ -93,28 +93,16 @@ const LogoTitle = styled(Typography.Text)`
 
 const LogoSubtitle = styled(Typography.Text)`
   color: var(--color-top-region-text-muted);
-  font-weight: 600;
+  font-weight: 500;
 `;
 
 const ContentWrap = styled(Content)`
   margin: var(--space-24) var(--space-24) var(--space-24) var(--space-16);
   padding: var(--space-24);
-  border-radius: var(--radius-20);
+  border-radius: var(--radius-16);
   background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  box-shadow: var(--shadow-2);
-  animation: shell-content-in 280ms ease-out;
-
-  @keyframes shell-content-in {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-1);
 
   @media (max-width: 1024px) {
     margin: var(--space-16);
@@ -126,7 +114,7 @@ const StyledSider = styled(Sider)`
   border-inline-end: 1px solid var(--color-border);
   background: var(--color-surface) !important;
   margin: var(--space-16) 0 var(--space-16) var(--space-16);
-  border-radius: var(--radius-20);
+  border-radius: var(--radius-16);
   overflow: hidden;
   box-shadow: var(--shadow-1);
 
@@ -162,14 +150,14 @@ const SideMenu = styled(Menu)`
 
 const HeaderActionButton = styled(Button)`
   color: var(--color-top-region-text);
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
 
   &:hover,
   &:focus {
     color: var(--color-top-region-text) !important;
-    border-color: rgba(255, 255, 255, 0.44) !important;
-    background: rgba(255, 255, 255, 0.2) !important;
+    border-color: rgba(255, 255, 255, 0.36) !important;
+    background: rgba(255, 255, 255, 0.16) !important;
   }
 `;
 

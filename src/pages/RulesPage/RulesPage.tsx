@@ -6,6 +6,7 @@ import {
   Collapse,
   Dropdown,
   Form,
+  Grid,
   Input,
   InputNumber,
   Modal,
@@ -349,6 +350,7 @@ export function RulesPage({
     () => orgOptions.map((item) => ({ label: item.label, value: String(item.value) })),
     []
   );
+  const screens = Grid.useBreakpoint();
   const effectivePermissionBlockedMessage = effectiveMeta
     ? getEffectivePermissionBlockedMessage(effectiveMeta.type, hasResource)
     : null;
@@ -673,7 +675,7 @@ export function RulesPage({
           )}
         </Space>
 
-        <Space style={{ marginBottom: 12 }}>
+        <Space wrap style={{ marginBottom: 12 }}>
           <Typography.Text strong>整体逻辑</Typography.Text>
           <Select
             style={{ width: 180 }}
@@ -684,10 +686,19 @@ export function RulesPage({
             ]}
             onChange={(value) => setGlobalLogicType(value as RuleLogicType)}
           />
-          <Typography.Text type="secondary">{conditionSummary}</Typography.Text>
+          <Typography.Text type="secondary" style={{ minWidth: 0 }}>
+            {conditionSummary}
+          </Typography.Text>
         </Space>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 420px", gap: 12, alignItems: "start" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: screens.lg ? "minmax(0,1fr) minmax(320px, 420px)" : "minmax(0,1fr)",
+            gap: 12,
+            alignItems: "start"
+          }}
+        >
           <Card size="small" title="条件链路">
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
               {conditionsDraft.map((condition, index) => {
@@ -723,26 +734,50 @@ export function RulesPage({
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
+                        gridTemplateColumns: screens.md ? "minmax(0,1fr) auto minmax(0,1fr)" : "minmax(0,1fr)",
                         alignItems: "center",
                         gap: 8,
                         width: "100%"
                       }}
                     >
-                      <div style={{ minWidth: 0, border: "1px solid #d9e8ff", borderRadius: 8, padding: "6px 8px", background: "#fff" }}>
-                        <Tag color="processing" style={{ marginInlineEnd: 8 }}>左值</Tag>
+                      <div
+                        style={{
+                          minWidth: 0,
+                          border: "1px solid #d9e8ff",
+                          borderRadius: 8,
+                          padding: "6px 8px",
+                          background: "#fff",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4
+                        }}
+                      >
                         <OperandPill conditionId={condition.id} side="left" operand={condition.left} selectedOperand={selectedOperand} onSelect={setSelectedOperand} />
                       </div>
                       <Select
-                        style={{ width: LOGIC_OPERATOR_WIDTH, minWidth: LOGIC_OPERATOR_WIDTH, maxWidth: LOGIC_OPERATOR_WIDTH }}
+                        style={
+                          screens.md
+                            ? { width: LOGIC_OPERATOR_WIDTH, minWidth: LOGIC_OPERATOR_WIDTH, maxWidth: LOGIC_OPERATOR_WIDTH }
+                            : { width: "100%" }
+                        }
                         value={condition.operator}
                         options={operatorOptions}
                         onChange={(value) =>
                           updateCondition(condition.id, (previous) => ({ ...previous, operator: normalizeOperator(value) }))
                         }
                       />
-                      <div style={{ minWidth: 0, border: "1px solid #d9e8ff", borderRadius: 8, padding: "6px 8px", background: "#fff" }}>
-                        <Tag color="processing" style={{ marginInlineEnd: 8 }}>右值</Tag>
+                      <div
+                        style={{
+                          minWidth: 0,
+                          border: "1px solid #d9e8ff",
+                          borderRadius: 8,
+                          padding: "6px 8px",
+                          background: "#fff",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4
+                        }}
+                      >
                         {condition.operator === "EXISTS" ? (
                           <Tag>无需右值</Tag>
                         ) : (
@@ -1340,22 +1375,22 @@ export function RulesPage({
       {!embedded ? (
         <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #2465f2 0%, #58a2ff 100%)">
+            <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
               <Statistic title={isTemplateMode ? "模板总数" : "规则总数"} value={rowSummary.total} />
             </SummaryCard>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #8f55ed 0%, #bf8bff 100%)">
+            <SummaryCard $accent="linear-gradient(90deg, #4a617a 0%, #7387a0 100%)">
               <Statistic title="草稿" value={rowSummary.draft} />
             </SummaryCard>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #16945f 0%, #47b983 100%)">
+            <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
               <Statistic title="已生效" value={rowSummary.active} />
             </SummaryCard>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #ce7f27 0%, #e9b15b 100%)">
+            <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
               <Statistic title="已停用" value={rowSummary.disabled} />
             </SummaryCard>
           </Col>

@@ -1,27 +1,27 @@
 export const designTokens = {
   color: {
-    background: "#f2f6fc",
-    backgroundAccent: "#edf3fc",
+    background: "#edf1f5",
+    backgroundAccent: "#e7ecf2",
     surface: "#ffffff",
-    surfaceMuted: "#f6f9ff",
-    surfaceGlass: "rgba(255, 255, 255, 0.94)",
-    topRegionBg: "#0b1220",
-    topRegionBgEnd: "#1a2438",
-    topRegionText: "#f5f8ff",
-    topRegionTextMuted: "rgba(245, 248, 255, 0.96)",
-    topRegionBorder: "rgba(255, 255, 255, 0.12)",
-    textPrimary: "#1c2438",
-    textSecondary: "#253752",
-    textTertiary: "#344965",
-    border: "#dce4f2",
-    borderStrong: "#aebdd7",
-    primary: "#1b63f0",
-    primaryHover: "#174fbe",
-    primarySoft: "rgba(27, 99, 240, 0.12)",
-    success: "#138a6a",
-    warning: "#ca7d1a",
-    danger: "#cb3f5b",
-    focusRing: "rgba(27, 99, 240, 0.3)"
+    surfaceMuted: "#f3f5f8",
+    surfaceGlass: "rgba(255, 255, 255, 0.96)",
+    topRegionBg: "#121b2a",
+    topRegionBgEnd: "#1c293b",
+    topRegionText: "#f3f6fa",
+    topRegionTextMuted: "rgba(243, 246, 250, 0.92)",
+    topRegionBorder: "rgba(255, 255, 255, 0.14)",
+    textPrimary: "#1f2937",
+    textSecondary: "#334155",
+    textTertiary: "#5f6d80",
+    border: "#d0d8e3",
+    borderStrong: "#a8b4c5",
+    primary: "#1f4b7a",
+    primaryHover: "#163a5f",
+    primarySoft: "rgba(31, 75, 122, 0.1)",
+    success: "#2f6f55",
+    warning: "#916736",
+    danger: "#a34747",
+    focusRing: "rgba(31, 75, 122, 0.28)"
   },
   spacing: {
     4: "4px",
@@ -34,15 +34,15 @@ export const designTokens = {
     48: "48px"
   },
   radius: {
-    8: "8px",
-    12: "12px",
-    16: "16px",
-    20: "20px"
+    8: "6px",
+    12: "8px",
+    16: "12px",
+    20: "14px"
   },
   shadow: {
-    level1: "0 2px 8px rgba(14, 30, 62, 0.06), 0 1px 2px rgba(14, 30, 62, 0.06)",
-    level2: "0 10px 26px rgba(14, 30, 62, 0.12)",
-    level3: "0 18px 42px rgba(14, 30, 62, 0.16)"
+    level1: "0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 6px rgba(15, 23, 42, 0.06)",
+    level2: "0 6px 18px rgba(15, 23, 42, 0.1)",
+    level3: "0 12px 28px rgba(15, 23, 42, 0.14)"
   },
   typography: {
     32: { size: "32px", lineHeight: "40px", weight: 600 },
@@ -71,9 +71,9 @@ export const antdThemeToken = {
   colorSuccess: designTokens.color.success,
   colorWarning: designTokens.color.warning,
   colorError: designTokens.color.danger,
-  borderRadius: 12,
-  borderRadiusSM: 8,
-  borderRadiusLG: 20,
+  borderRadius: 8,
+  borderRadiusSM: 6,
+  borderRadiusLG: 12,
   lineWidth: 1,
   boxShadow: designTokens.shadow.level2,
   boxShadowSecondary: designTokens.shadow.level1,
@@ -103,7 +103,7 @@ export const antdComponentTokens = {
     triggerBg: designTokens.color.surface
   },
   Card: {
-    borderRadiusLG: 16,
+    borderRadiusLG: 12,
     boxShadow: designTokens.shadow.level1,
     bodyPadding: 16,
     headerPadding: 16,
@@ -111,26 +111,26 @@ export const antdComponentTokens = {
   },
   Menu: {
     itemHeight: 40,
-    itemPaddingInline: 14,
+    itemPaddingInline: 12,
     itemMarginInline: 8,
     itemMarginBlock: 5,
-    itemBorderRadius: 10,
+    itemBorderRadius: 6,
     activeBarHeight: 0,
-    itemColor: "#2d3a57",
-    itemHoverBg: "rgba(27, 99, 240, 0.08)",
+    itemColor: designTokens.color.textSecondary,
+    itemHoverBg: "rgba(31, 75, 122, 0.08)",
     itemHoverColor: designTokens.color.primaryHover,
     itemSelectedBg: designTokens.color.primarySoft,
     itemSelectedColor: designTokens.color.primary
   },
   Button: {
     controlHeight: 40,
-    borderRadius: 10,
+    borderRadius: 6,
     paddingInline: 16,
     fontWeight: 500
   },
   Input: {
     controlHeight: 40,
-    borderRadius: 8,
+    borderRadius: 6,
     paddingInline: 12
   },
   Select: {

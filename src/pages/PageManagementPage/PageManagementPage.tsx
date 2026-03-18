@@ -754,22 +754,22 @@ export function PageManagementPage() {
 
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #1f63f0 0%, #4c8dff 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
             <Statistic title="菜单总数" value={menuRows.length} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #169060 0%, #47b985 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
             <Statistic title="能力已开通" value={readyMenus} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #cb7f27 0%, #efb865 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
             <Statistic title="待开通菜单" value={needRequestMenus} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #475467 0%, #667085 100%)">
+          <SummaryCard $accent="linear-gradient(90deg, #4f5f72 0%, #738396 100%)">
             <Statistic title="筛选结果" value={filteredMenuRows.length} />
           </SummaryCard>
         </Col>

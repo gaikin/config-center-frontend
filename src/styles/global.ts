@@ -68,15 +68,14 @@ export const GlobalStyle = createGlobalStyle`
   html,
   body {
     margin: 0;
-    font-family: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    background:
-      radial-gradient(1200px 600px at -10% -15%, rgba(27, 99, 240, 0.1), transparent 68%),
-      radial-gradient(980px 520px at 105% -8%, rgba(16, 111, 143, 0.08), transparent 70%),
-      linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-accent) 100%);
+    font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-accent) 100%);
     min-height: 100vh;
     color: var(--color-text-primary);
     font-size: var(--font-14);
     line-height: var(--lh-14);
+    letter-spacing: 0.1px;
+    font-feature-settings: "tnum" 1;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: auto;
   }
@@ -183,7 +182,7 @@ export const GlobalStyle = createGlobalStyle`
   .ant-table-thead > tr > th {
     color: var(--color-text-primary) !important;
     font-weight: 600;
-    background: #f7faff !important;
+    background: #f3f6fa !important;
   }
 
   .ant-table-tbody > tr > td {
@@ -200,13 +199,12 @@ export const GlobalStyle = createGlobalStyle`
     background: var(--color-surface);
     border-color: var(--color-border);
     box-shadow: var(--shadow-1);
-    transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    transition: box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
   }
 
   .ant-card:hover {
-    transform: translateY(-3px);
     border-color: var(--color-border-strong);
-    box-shadow: var(--shadow-2);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
   }
 
   .ant-menu-light {
@@ -218,7 +216,7 @@ export const GlobalStyle = createGlobalStyle`
   }
 
   .ant-menu-light .ant-menu-item-selected {
-    box-shadow: inset 0 0 0 1px rgba(27, 99, 240, 0.15);
+    box-shadow: inset 0 0 0 1px rgba(31, 75, 122, 0.2);
   }
 
   .ant-menu-light .ant-menu-item-selected::after {
@@ -230,21 +228,18 @@ export const GlobalStyle = createGlobalStyle`
   .ant-select-selector,
   .ant-menu-item,
   .ant-tag {
-    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-  }
-
-  .ant-btn:not(.ant-btn-disabled):hover {
-    transform: translateY(-1px);
+    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
   }
 
   .ant-btn-primary {
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
-    border-color: transparent;
-    box-shadow: 0 8px 16px rgba(27, 99, 240, 0.24);
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px rgba(31, 75, 122, 0.24);
   }
 
   .ant-btn-primary:hover {
-    background: linear-gradient(135deg, var(--color-primary-hover) 0%, #0e4bb7 100%) !important;
+    background: var(--color-primary-hover) !important;
+    border-color: var(--color-primary-hover) !important;
   }
 
   .ant-select-focused .ant-select-selector,

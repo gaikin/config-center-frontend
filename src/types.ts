@@ -289,7 +289,7 @@ export interface RulePreviewResult {
   traces: RulePreviewTrace[];
 }
 
-export type JobNodeType = "page_get" | "api_call" | "list_lookup" | "js_script" | "page_set";
+export type JobNodeType = "page_get" | "api_call" | "list_lookup" | "js_script" | "page_set" | "page_click" | "send_hotkey";
 
 export interface JobSceneDefinition {
   id: number;

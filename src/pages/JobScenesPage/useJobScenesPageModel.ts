@@ -1,5 +1,5 @@
 import { Form, Grid, Modal, message } from "antd";
-import { addEdge, type Connection, MarkerType, useEdgesState, useNodesState } from "@xyflow/react";
+import { addEdge, type Connection, MarkerType, type NodeChange, Position, useEdgesState, useNodesState } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getOrgLabel } from "../../orgOptions";
 import { configCenterService } from "../../services/configCenterService";
@@ -7,13 +7,17 @@ import { workflowService } from "../../services/workflowService";
 import { getRightOverlayDrawerWidth } from "../../utils";
 import { createFieldIssue, validateJobSceneDraftPayload } from "../../validation/formRules";
 import type {
+  BusinessFieldDefinition,
   ExecutionMode,
   FieldValidationIssue,
+  InterfaceDefinition,
   JobNodeDefinition,
   JobSceneDefinition,
   JobScenePreviewField,
   LifecycleState,
   ListDataDefinition,
+  PageElement,
+  PageFieldBinding,
   PageResource,
   RuleDefinition,
   SaveValidationReport
@@ -23,6 +27,7 @@ import {
   buildFormValuesFromNode,
   buildFlowFromNodeRows,
   buildNodeConfigFromForm,
+  deriveNodeOutputReferenceOptions,
   derivePreviewBeforeExecute,
   deriveOrderedNodeIds,
   executionLabel,
@@ -30,8 +35,12 @@ import {
   FlowNode,
   NodeDetailForm,
   getDefaultNodeConfig,
+  getFlowNodeStyle,
   getFlowPosition,
+  mergeFlowNextNodeIds,
   mergeFlowPosition,
+  parseApiCallInputParams,
+  parseApiCallOutputOptions,
   nodeLibrary,
   nodeTypeLabel,
   SceneForm,
@@ -59,6 +68,7 @@ export function useJobScenesPageModel() {
   const [rows, setRows] = useState<JobSceneDefinition[]>([]);
   const [resources, setResources] = useState<PageResource[]>([]);
   const [rules, setRules] = useState<RuleDefinition[]>([]);
+  const [interfaces, setInterfaces] = useState<InterfaceDefinition[]>([]);
   const [listDatas, setListDatas] = useState<ListDataDefinition[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [open, setOpen] = useState(false);
@@ -70,10 +80,12 @@ export function useJobScenesPageModel() {
   const [builderScene, setBuilderScene] = useState<JobSceneDefinition | null>(null);
   const [nodeRows, setNodeRows] = useState<JobNodeDefinition[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedLibraryNodeType, setSelectedLibraryNodeType] = useState<JobNodeDefinition["nodeType"] | null>(nodeLibrary[0]?.nodeType ?? null);
+  const [pageFieldOptions, setPageFieldOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [savingFlow, setSavingFlow] = useState(false);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, FlowEdge> | null>(null);
 
-  const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState<FlowNode>([]);
+  const [flowNodes, setFlowNodes, onFlowNodesChangeBase] = useNodesState<FlowNode>([]);
   const [flowEdges, setFlowEdges, onFlowEdgesChange] = useEdgesState<FlowEdge>([]);
 
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -86,11 +98,14 @@ export function useJobScenesPageModel() {
   const [nodeValidationIssues, setNodeValidationIssues] = useState<FieldValidationIssue[]>([]);
   const [previewValidationIssues, setPreviewValidationIssues] = useState<FieldValidationIssue[]>([]);
   const [publishNotice, setPublishNotice] = useState<{ objectName: string; warningCount: number; resourceId: number } | null>(null);
+  const [invalidNodeIds, setInvalidNodeIds] = useState<string[]>([]);
   const autoOpenCreateRef = useRef(false);
+  const switchingNodeRef = useRef(false);
 
   const [nodeDetailForm] = Form.useForm<NodeDetailForm>();
   const watchedNodeType = Form.useWatch("nodeType", nodeDetailForm);
   const watchedNodeListDataId = Form.useWatch("listDataId", nodeDetailForm);
+  const watchedApiInterfaceId = Form.useWatch("apiInterfaceId", nodeDetailForm);
   const watchedSceneValues = Form.useWatch([], form) as Partial<SceneForm> | undefined;
   const watchedNodeValues = Form.useWatch([], nodeDetailForm) as Partial<NodeDetailForm> | undefined;
   const [msgApi, holder] = message.useMessage();
@@ -99,26 +114,78 @@ export function useJobScenesPageModel() {
     () => nodeRows.find((item) => String(item.id) === selectedNodeId) ?? null,
     [nodeRows, selectedNodeId]
   );
+  const nodeOutputReferenceOptions = useMemo(
+    () => deriveNodeOutputReferenceOptions(nodeRows, selectedNode?.id, flowEdges),
+    [flowEdges, nodeRows, selectedNode?.id]
+  );
   const selectedNodeListData = useMemo(
     () => listDatas.find((item) => item.id === watchedNodeListDataId) ?? null,
     [listDatas, watchedNodeListDataId]
+  );
+  const selectedApiInterface = useMemo(
+    () => interfaces.find((item) => item.id === watchedApiInterfaceId) ?? null,
+    [interfaces, watchedApiInterfaceId]
+  );
+  const selectedApiInputParams = useMemo(
+    () => (selectedApiInterface ? parseApiCallInputParams(selectedApiInterface.inputConfigJson) : []),
+    [selectedApiInterface]
+  );
+  const selectedApiOutputOptions = useMemo(
+    () => (selectedApiInterface ? parseApiCallOutputOptions(selectedApiInterface.outputConfigJson) : []),
+    [selectedApiInterface]
   );
 
   useEffect(() => {
     if (!selectedNode) {
       nodeDetailForm.resetFields();
+      setNodeValidationIssues([]);
       return;
     }
+    nodeDetailForm.resetFields();
     nodeDetailForm.setFieldsValue(buildFormValuesFromNode(selectedNode));
+    setNodeValidationIssues([]);
   }, [selectedNode, nodeDetailForm]);
+
+  useEffect(() => {
+    if (watchedNodeType !== "api_call") {
+      return;
+    }
+    const inputParams = selectedApiInputParams;
+    const outputOptions = selectedApiOutputOptions;
+    const rawBindings = (nodeDetailForm.getFieldValue("apiInputBindings") ?? {}) as Record<
+      string,
+      { sourceType?: "STRING" | "REFERENCE"; value?: string }
+    >;
+    const nextBindings: Record<string, { sourceType: "STRING" | "REFERENCE"; value: string }> = {};
+    for (const item of inputParams) {
+      const current = rawBindings[item.name];
+      nextBindings[item.name] = {
+        sourceType: current?.sourceType === "REFERENCE" ? "REFERENCE" : "STRING",
+        value: typeof current?.value === "string" ? current.value : ""
+      };
+    }
+    const rawOutputPaths = ((nodeDetailForm.getFieldValue("apiOutputPaths") as string[] | undefined) ?? []).filter(Boolean);
+    const validOutputPathSet = new Set(outputOptions.map((item) => item.path));
+    const nextOutputPaths = rawOutputPaths.filter((item) => validOutputPathSet.has(item));
+
+    const shouldUpdateBindings = JSON.stringify(rawBindings) !== JSON.stringify(nextBindings);
+    const shouldUpdateOutputs = JSON.stringify(rawOutputPaths) !== JSON.stringify(nextOutputPaths);
+    if (shouldUpdateBindings || shouldUpdateOutputs) {
+      nodeDetailForm.setFieldsValue({
+        apiInputBindings: nextBindings,
+        apiOutputPaths: nextOutputPaths
+      });
+    }
+  }, [nodeDetailForm, selectedApiInputParams, selectedApiOutputOptions, watchedNodeType]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [sceneData, resourceData, ruleData, listDataRows] = await Promise.all([
+      const [sceneData, resourceData, ruleData, interfaceRows, listDataRows] = await Promise.all([
         configCenterService.listJobScenes(),
         configCenterService.listPageResources(),
         configCenterService.listRules(),
+        configCenterService.listInterfaces(),
         configCenterService.listListDatas()
       ]);
       const sceneNodeCounts = await Promise.all(
@@ -135,6 +202,7 @@ export function useJobScenesPageModel() {
       );
       setResources(resourceData);
       setRules(ruleData);
+      setInterfaces(interfaceRows);
       setListDatas(listDataRows);
     } finally {
       setLoading(false);
@@ -212,13 +280,38 @@ export function useJobScenesPageModel() {
     const nodes = await workflowService.listJobNodes(sceneId);
     setNodeRows(nodes);
     const flow = buildFlowFromNodeRows(nodes);
-    setFlowNodes(flow.nodes);
+    const invalidSet = new Set(invalidNodeIds);
+    setFlowNodes(
+      flow.nodes.map((item) => ({
+        ...item,
+        style: getFlowNodeStyle(Boolean(item.data.enabled), invalidSet.has(item.id))
+      }))
+    );
     setFlowEdges(flow.edges);
     updateSceneNodeCount(sceneId, nodes.length);
 
     if (selectedNodeId && !nodes.some((item) => String(item.id) === selectedNodeId)) {
       setSelectedNodeId(null);
     }
+  }
+
+  async function loadBuilderPageFieldOptions(pageResourceId: number) {
+    const [bindings, elements, businessFields] = await Promise.all([
+      configCenterService.listPageFieldBindings(pageResourceId),
+      configCenterService.listPageElements(pageResourceId),
+      configCenterService.listBusinessFields(pageResourceId)
+    ]);
+    const elementMap = new Map<number, PageElement>(elements.map((item) => [item.id, item]));
+    const fieldMap = new Map<string, BusinessFieldDefinition>(businessFields.map((item) => [item.code, item]));
+    const options = bindings.map((binding: PageFieldBinding) => {
+      const field = fieldMap.get(binding.businessFieldCode);
+      const element = elementMap.get(binding.pageElementId);
+      return {
+        value: binding.businessFieldCode,
+        label: `${field?.name ?? binding.businessFieldCode}（${binding.businessFieldCode}${element ? ` · ${element.logicName}` : ""}）`
+      };
+    });
+    setPageFieldOptions(options);
   }
 
   function openCreate(preset?: { pageResourceId?: number; executionMode?: ExecutionMode; name?: string }) {
@@ -470,9 +563,11 @@ export function useJobScenesPageModel() {
     setBuilderScene(scene);
     setBuilderOpen(true);
     setSelectedNodeId(null);
+    setInvalidNodeIds([]);
+    setSelectedLibraryNodeType(nodeLibrary[0]?.nodeType ?? null);
     setNodeValidationIssues([]);
     try {
-      await loadBuilderData(scene.id);
+      await Promise.all([loadBuilderData(scene.id), loadBuilderPageFieldOptions(scene.pageResourceId)]);
     } catch (error) {
       msgApi.error(error instanceof Error ? error.message : "加载作业编排失败");
     }
@@ -481,6 +576,8 @@ export function useJobScenesPageModel() {
   function closeBuilderDirectly() {
     setBuilderOpen(false);
     setSelectedNodeId(null);
+    setInvalidNodeIds([]);
+    setPageFieldOptions([]);
     setNodeValidationIssues([]);
   }
 
@@ -498,7 +595,7 @@ export function useJobScenesPageModel() {
     closeBuilderDirectly();
   }
 
-  async function addNodeFromLibrary(nodeType: JobNodeDefinition["nodeType"]) {
+  async function addNodeFromLibrary(nodeType: JobNodeDefinition["nodeType"], dropPosition?: { x: number; y: number }) {
     if (!builderScene) {
       return;
     }
@@ -506,20 +603,26 @@ export function useJobScenesPageModel() {
     const nextOrder = (nodeRows[nodeRows.length - 1]?.orderNo ?? 0) + 1;
     const id = Date.now() + Math.floor(Math.random() * 1000);
     const maxX = flowNodes.length > 0 ? Math.max(...flowNodes.map((item) => item.position.x)) : 0;
-    const position = { x: Math.max(80, maxX + 260), y: 120 + ((nextOrder - 1) % 3) * 120 };
+    const autoPosition = { x: Math.max(80, maxX + 260), y: 120 + ((nextOrder - 1) % 3) * 120 };
+    const position = dropPosition
+      ? { x: Math.round(Math.max(40, dropPosition.x)), y: Math.round(Math.max(40, dropPosition.y)) }
+      : autoPosition;
     const defaultListData = listDatas[0];
     const configJson = mergeFlowPosition(
       JSON.stringify(
         getDefaultNodeConfig(nodeType, {
+          field: pageFieldOptions[0]?.value,
           listDataId: defaultListData?.id,
           matchColumn: defaultListData?.importColumns[0],
-          inputSource: defaultListData?.importColumns[0]
+          inputSource: defaultListData?.importColumns[0],
+          resultKeys: (defaultListData?.outputFields?.length ? defaultListData.outputFields : defaultListData?.importColumns ?? []).slice(0, 1),
+          target: pageFieldOptions[0]?.value
         })
       ),
       position
     );
 
-    await workflowService.upsertJobNode({
+    const savedNode = await workflowService.upsertJobNode({
       id,
       sceneId: builderScene.id,
       nodeType,
@@ -529,20 +632,120 @@ export function useJobScenesPageModel() {
       configJson
     });
 
+    setNodeRows((items) => [...items, savedNode].sort((a, b) => a.orderNo - b.orderNo));
+    setFlowNodes((items) => [
+      ...items,
+      {
+        id: String(savedNode.id),
+        type: "jobNode",
+        data: {
+          label: `${savedNode.orderNo}. ${savedNode.name}`,
+          nodeType: savedNode.nodeType,
+          enabled: savedNode.enabled
+        },
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+        position: getFlowPosition(savedNode.configJson, position.x, position.y),
+        style: getFlowNodeStyle(savedNode.enabled)
+      }
+    ]);
+    setInvalidNodeIds((items) => items.filter((item) => item !== String(savedNode.id)));
+    updateSceneNodeCount(builderScene.id, nodeRows.length + 1);
     msgApi.success(`${nodeTypeLabel[nodeType]}节点已添加`);
-    await loadBuilderData(builderScene.id);
-    setSelectedNodeId(String(id));
+    setSelectedNodeId(String(savedNode.id));
+  }
+
+  function previewLibraryNode(nodeType: JobNodeDefinition["nodeType"]) {
+    setSelectedLibraryNodeType(nodeType);
+  }
+
+  async function addNodeFromLibraryAtClientPosition(
+    nodeType: JobNodeDefinition["nodeType"],
+    clientPosition: { x: number; y: number }
+  ) {
+    const flowPosition = reactFlowInstance?.screenToFlowPosition(clientPosition) ?? clientPosition;
+    await addNodeFromLibrary(nodeType, flowPosition);
   }
 
   function validateNodeDetail(values: Partial<NodeDetailForm>) {
     const nextIssues: FieldValidationIssue[] = [];
-    if (values.nodeType === "page_get" && !values.field?.trim()) {
-      nextIssues.push(createFieldIssue({ section: "node", field: "field", label: "读取字段", message: "请输入读取字段" }));
+    if (values.nodeType === "page_get") {
+      if (!values.field?.trim()) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "field", label: "读取字段", message: "请选择读取字段" }));
+      } else if (!pageFieldOptions.some((item) => item.value === values.field)) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "field", label: "读取字段", message: "所选字段已失效，请重新选择" }));
+      }
     }
-    if (values.nodeType === "api_call" && !values.interfaceId) {
-      nextIssues.push(createFieldIssue({ section: "node", field: "interfaceId", label: "接口", message: "请选择接口" }));
+    if (values.nodeType === "api_call") {
+      if (values.apiRefactorRequired) {
+        nextIssues.push(
+          createFieldIssue({
+            section: "node",
+            field: "apiInterfaceId",
+            label: "接口调用",
+            message: "接口调用节点已升级，请重新选择接口并补全入参与出参配置"
+          })
+        );
+      }
+      if (!values.apiInterfaceId) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "apiInterfaceId", label: "接口", message: "请选择接口" }));
+      } else {
+        const targetInterface = interfaces.find((item) => item.id === values.apiInterfaceId);
+        if (!targetInterface) {
+          nextIssues.push(createFieldIssue({ section: "node", field: "apiInterfaceId", label: "接口", message: "所选接口不存在" }));
+        } else {
+          const inputParams = parseApiCallInputParams(targetInterface.inputConfigJson);
+          const outputOptions = parseApiCallOutputOptions(targetInterface.outputConfigJson);
+          const outputPathSet = new Set(outputOptions.map((item) => item.path));
+          const bindings = values.apiInputBindings ?? {};
+          for (const param of inputParams) {
+            const binding = bindings[param.name];
+            if (param.required && (!binding || !binding.value?.trim())) {
+              nextIssues.push(
+                createFieldIssue({
+                  section: "node",
+                  field: `apiInputBindings.${param.name}.value`,
+                  label: `入参 ${param.name}`,
+                  message: "该入参为必填，请配置取值"
+                })
+              );
+            }
+            if (binding?.sourceType === "REFERENCE" && binding.value?.trim()) {
+              if (!/^\{\{[a-zA-Z0-9_]+\}\}$/.test(binding.value.trim())) {
+                nextIssues.push(
+                  createFieldIssue({
+                    section: "node",
+                    field: `apiInputBindings.${param.name}.value`,
+                    label: `入参 ${param.name}`,
+                    message: "引用模式下请选择有效变量（格式：{{node_xxx}}）"
+                  })
+                );
+              } else if (!nodeOutputReferenceOptions.some((item) => item.value === binding.value?.trim())) {
+                nextIssues.push(
+                  createFieldIssue({
+                    section: "node",
+                    field: `apiInputBindings.${param.name}.value`,
+                    label: `入参 ${param.name}`,
+                    message: "所选引用已失效，请重新选择"
+                  })
+                );
+              }
+            }
+          }
+          const outputPaths = (values.apiOutputPaths ?? []).filter((item) => item.trim());
+          if (outputPaths.length === 0) {
+            nextIssues.push(createFieldIssue({ section: "node", field: "apiOutputPaths", label: "接口出参", message: "请至少选择一个出参字段" }));
+          } else if (outputPaths.some((item) => !outputPathSet.has(item))) {
+            nextIssues.push(createFieldIssue({ section: "node", field: "apiOutputPaths", label: "接口出参", message: "存在失效出参，请重新选择" }));
+          }
+        }
+      }
     }
     if (values.nodeType === "list_lookup") {
+      const selectedListData = values.listDataId ? listDatas.find((item) => item.id === values.listDataId) : undefined;
+      const availableOutputFields = selectedListData
+        ? (selectedListData.outputFields.length > 0 ? selectedListData.outputFields : selectedListData.importColumns)
+        : [];
       if (!values.listDataId) {
         nextIssues.push(createFieldIssue({ section: "node", field: "listDataId", label: "名单数据", message: "请选择名单数据" }));
       } else if (!listDatas.some((item) => item.id === values.listDataId)) {
@@ -553,51 +756,220 @@ export function useJobScenesPageModel() {
       }
       if (!values.inputSource?.trim()) {
         nextIssues.push(createFieldIssue({ section: "node", field: "inputSource", label: "输入来源", message: "请输入输入来源" }));
+      } else if (values.inputSourceType === "REFERENCE" && !/^\{\{[a-zA-Z0-9_]+\}\}$/.test(values.inputSource.trim())) {
+        nextIssues.push(
+          createFieldIssue({
+            section: "node",
+            field: "inputSource",
+            label: "输入来源",
+            message: "引用模式下请选择有效变量（格式：{{node_xxx}}）"
+          })
+        );
       }
-      if (!values.resultKey?.trim()) {
-        nextIssues.push(createFieldIssue({ section: "node", field: "resultKey", label: "结果键名", message: "请输入结果键名" }));
+      const resultKeys = Array.from(
+        new Set(
+          (values.resultKeys ?? (values.resultKey ? [values.resultKey] : []))
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      );
+      if (resultKeys.length === 0) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "resultKeys", label: "输出字段", message: "请至少选择一个输出字段" }));
+      } else if (availableOutputFields.length > 0 && resultKeys.some((item) => !availableOutputFields.includes(item))) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "resultKeys", label: "输出字段", message: "存在失效输出字段，请重新选择" }));
       }
     }
-    if (values.nodeType === "js_script" && !values.script?.trim()) {
-      nextIssues.push(createFieldIssue({ section: "node", field: "script", label: "脚本标识", message: "请输入脚本标识" }));
+    if (values.nodeType === "js_script") {
+      if (!values.scriptCode?.trim()) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "scriptCode", label: "脚本代码", message: "请输入脚本代码" }));
+      }
+      const scriptInputs = values.scriptInputs ?? [];
+      const inputNameSet = new Set<string>();
+      scriptInputs.forEach((item, index) => {
+        const inputName = item?.name?.trim() ?? "";
+        if (!inputName) {
+          nextIssues.push(
+            createFieldIssue({
+              section: "node",
+              field: `scriptInputs.${index}.name`,
+              label: "输入变量",
+              message: "请输入输入变量名"
+            })
+          );
+        } else if (inputNameSet.has(inputName)) {
+          nextIssues.push(
+            createFieldIssue({
+              section: "node",
+              field: `scriptInputs.${index}.name`,
+              label: "输入变量",
+              message: "输入变量名不能重复"
+            })
+          );
+        } else {
+          inputNameSet.add(inputName);
+        }
+        const sourceType = item?.sourceType === "REFERENCE" ? "REFERENCE" : "STRING";
+        const value = item?.value?.trim() ?? "";
+        if (sourceType === "REFERENCE" && value) {
+          if (!/^\{\{[a-zA-Z0-9_]+\}\}$/.test(value)) {
+            nextIssues.push(
+              createFieldIssue({
+                section: "node",
+                field: `scriptInputs.${index}.value`,
+                label: "输入来源",
+                message: "引用模式下请选择有效变量（格式：{{node_xxx}}）"
+              })
+            );
+          } else if (!nodeOutputReferenceOptions.some((option) => option.value === value)) {
+            nextIssues.push(
+              createFieldIssue({
+                section: "node",
+                field: `scriptInputs.${index}.value`,
+                label: "输入来源",
+                message: "所选引用已失效，请重新选择"
+              })
+            );
+          }
+        }
+      });
+      const scriptOutputKeys = Array.from(
+        new Set(
+          (values.scriptOutputKeys ?? [])
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      );
+      if (scriptOutputKeys.length === 0) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "scriptOutputKeys", label: "输出字段", message: "请至少配置一个输出字段" }));
+      }
     }
-    if (values.nodeType === "page_set" && !values.target?.trim()) {
-      nextIssues.push(createFieldIssue({ section: "node", field: "target", label: "写入目标字段", message: "请输入写入目标字段" }));
+    if (values.nodeType === "page_set") {
+      if (!values.target?.trim()) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "target", label: "写入目标字段", message: "请选择写入目标字段" }));
+      } else if (!pageFieldOptions.some((item) => item.value === values.target)) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "target", label: "写入目标字段", message: "所选目标字段已失效，请重新选择" }));
+      }
+    }
+    if (values.nodeType === "page_click") {
+      if (!values.target?.trim()) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "target", label: "点击目标字段", message: "请选择点击目标字段" }));
+      } else if (!pageFieldOptions.some((item) => item.value === values.target)) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "target", label: "点击目标字段", message: "所选目标字段已失效，请重新选择" }));
+      }
+    }
+    if (values.nodeType === "send_hotkey") {
+      const hotkeyKey = values.hotkeyKey?.trim() ?? "";
+      if (!hotkeyKey) {
+        nextIssues.push(createFieldIssue({ section: "node", field: "hotkeyKey", label: "主键", message: "请选择主键" }));
+      }
+    }
+    if (values.nodeType === "page_set" && values.valueType === "REFERENCE" && values.value?.trim()) {
+      if (!/^\{\{[a-zA-Z0-9_]+\}\}$/.test(values.value.trim())) {
+        nextIssues.push(
+          createFieldIssue({
+            section: "node",
+            field: "value",
+            label: "写入值",
+            message: "引用模式下请选择有效变量（格式：{{node_xxx}}）"
+          })
+        );
+      } else if (!nodeOutputReferenceOptions.some((item) => item.value === values.value?.trim())) {
+        nextIssues.push(
+          createFieldIssue({
+            section: "node",
+            field: "value",
+            label: "写入值",
+            message: "所选引用已失效，请重新选择"
+          })
+        );
+      }
     }
     return nextIssues;
   }
 
-  async function saveSelectedNode() {
+  async function saveSelectedNode(options?: { silent?: boolean; persist?: boolean }) {
     if (!selectedNode || !builderScene) {
-      return;
+      return true;
     }
 
-    const values = await nodeDetailForm.validateFields();
-    const nextIssues = validateNodeDetail(values);
-    setNodeValidationIssues(nextIssues);
-    if (nextIssues.length > 0) {
-      msgApi.error("节点属性还有待处理问题，请先修复");
-      return;
+    let values: Partial<NodeDetailForm>;
+    if (options?.silent) {
+      values = nodeDetailForm.getFieldsValue(true) as Partial<NodeDetailForm>;
+    } else {
+      try {
+        values = await nodeDetailForm.validateFields();
+      } catch {
+        return false;
+      }
     }
+    const normalizedValues: NodeDetailForm = {
+      ...values,
+      name: values.name?.trim() || selectedNode.name,
+      nodeType: values.nodeType ?? selectedNode.nodeType,
+      enabled: typeof values.enabled === "boolean" ? values.enabled : selectedNode.enabled
+    };
     const flowNode = flowNodes.find((item) => item.id === String(selectedNode.id));
     const fallbackPosition = getFlowPosition(selectedNode.configJson, 80, 120);
     const configJson = mergeFlowPosition(
-      JSON.stringify(buildNodeConfigFromForm(values)),
+      JSON.stringify(buildNodeConfigFromForm(normalizedValues)),
       flowNode?.position ?? fallbackPosition
     );
-
-    await workflowService.upsertJobNode({
+    const nextIssues = validateNodeDetail(normalizedValues);
+    setNodeValidationIssues(nextIssues);
+    const hasIssues = nextIssues.length > 0;
+    const nextNode: JobNodeDefinition = {
       ...selectedNode,
-      name: values.name,
-      nodeType: values.nodeType,
-      enabled: values.enabled,
+      name: normalizedValues.name,
+      nodeType: normalizedValues.nodeType,
+      enabled: normalizedValues.enabled,
       configJson
-    });
+    };
+    const currentNodeId = String(nextNode.id);
+    if (hasIssues) {
+      setInvalidNodeIds((items) => (items.includes(currentNodeId) ? items : [...items, currentNodeId]));
+    } else {
+      setInvalidNodeIds((items) => items.filter((item) => item !== currentNodeId));
+    }
 
-    msgApi.success("节点属性已保存");
+    setNodeRows((items) => items.map((item) => (item.id === nextNode.id ? nextNode : item)));
+    setFlowNodes((items) =>
+      items.map((item) =>
+        item.id === String(nextNode.id)
+          ? {
+              ...item,
+              data: {
+                ...item.data,
+                label: `${nextNode.orderNo}. ${nextNode.name}`,
+                nodeType: nextNode.nodeType,
+                enabled: nextNode.enabled
+              },
+              style: getFlowNodeStyle(nextNode.enabled, hasIssues)
+            }
+          : item
+      )
+    );
+
+    if (hasIssues) {
+      if (!options?.silent) {
+        msgApi.error("节点属性还有待处理问题，请先修复");
+      }
+      return options?.persist === false;
+    }
+
+    if (options?.persist === false) {
+      setNodeValidationIssues([]);
+      return true;
+    }
+
+    await workflowService.upsertJobNode(nextNode);
+
+    if (!options?.silent) {
+      msgApi.success("节点属性已保存");
+    }
     setNodeValidationIssues([]);
     await loadBuilderData(builderScene.id);
-    setSelectedNodeId(String(selectedNode.id));
+    setSelectedNodeId(String(nextNode.id));
+    return true;
   }
 
   const liveNodeValidationIssues = useMemo(() => {
@@ -605,17 +977,37 @@ export function useJobScenesPageModel() {
       return [] as FieldValidationIssue[];
     }
     return validateNodeDetail(watchedNodeValues ?? {});
-  }, [listDatas, selectedNode, watchedNodeValues]);
+  }, [interfaces, listDatas, nodeOutputReferenceOptions, selectedNode, watchedNodeValues]);
 
-  async function removeSelectedNode() {
-    if (!selectedNode || !builderScene) {
+  async function removeFlowNode(nodeId: string, options?: { silent?: boolean }) {
+    if (!builderScene) {
+      return;
+    }
+    const numericNodeId = Number(nodeId);
+    if (!Number.isFinite(numericNodeId)) {
       return;
     }
 
-    await workflowService.deleteJobNode(selectedNode.id);
-    msgApi.success("节点已删除");
-    setSelectedNodeId(null);
-    await loadBuilderData(builderScene.id);
+    await workflowService.deleteJobNode(numericNodeId);
+    setNodeRows((items) => {
+      const next = items.filter((item) => String(item.id) !== nodeId);
+      updateSceneNodeCount(builderScene.id, next.length);
+      return next;
+    });
+    setFlowNodes((items) => items.filter((item) => item.id !== nodeId));
+    setFlowEdges((items) => items.filter((item) => item.source !== nodeId && item.target !== nodeId));
+    setInvalidNodeIds((items) => items.filter((item) => item !== nodeId));
+    setSelectedNodeId((current) => (current === nodeId ? null : current));
+    if (!options?.silent) {
+      msgApi.success("节点已删除");
+    }
+  }
+
+  async function removeSelectedNode() {
+    if (!selectedNode) {
+      return;
+    }
+    await removeFlowNode(String(selectedNode.id));
   }
 
   const onConnect = useCallback(
@@ -624,7 +1016,7 @@ export function useJobScenesPageModel() {
         addEdge(
           {
             ...connection,
-            type: "smoothstep",
+            type: "bezier",
             markerEnd: { type: MarkerType.ArrowClosed }
           },
           oldEdges
@@ -632,6 +1024,39 @@ export function useJobScenesPageModel() {
       );
     },
     [setFlowEdges]
+  );
+
+  const onFlowNodesChange = useCallback(
+    (changes: NodeChange<FlowNode>[]) => {
+      onFlowNodesChangeBase(changes);
+
+      const removedIds = changes
+        .filter((item) => item.type === "remove")
+        .map((item) => item.id);
+      if (removedIds.length === 0 || !builderScene) {
+        return;
+      }
+
+      const removedSet = new Set(removedIds);
+      setNodeRows((items) => {
+        const next = items.filter((item) => !removedSet.has(String(item.id)));
+        updateSceneNodeCount(builderScene.id, next.length);
+        return next;
+      });
+      setInvalidNodeIds((items) => items.filter((item) => !removedSet.has(item)));
+      setSelectedNodeId((current) => (current && removedSet.has(current) ? null : current));
+
+      void Promise.all(
+        removedIds.map(async (rawId) => {
+          const nodeId = Number(rawId);
+          if (!Number.isFinite(nodeId)) {
+            return;
+          }
+          await workflowService.deleteJobNode(nodeId);
+        })
+      );
+    },
+    [builderScene, onFlowNodesChangeBase]
   );
 
   function autoLayoutNodes() {
@@ -671,8 +1096,30 @@ export function useJobScenesPageModel() {
 
     setSavingFlow(true);
     try {
+      const nodeSaved = await saveSelectedNode({ silent: true });
+      if (!nodeSaved) {
+        msgApi.error("当前节点属性未通过校验，请先修复再保存编排");
+        return;
+      }
       const nodeMap = new Map(nodeRows.map((item) => [String(item.id), item]));
       const orderedIds = deriveOrderedNodeIds(flowNodes, flowEdges);
+      const orderedIndexMap = new Map(orderedIds.map((id, index) => [id, index]));
+      const nextNodeIdsBySource = new Map<string, string[]>();
+
+      for (const edge of flowEdges) {
+        if (!nodeMap.has(edge.source) || !nodeMap.has(edge.target)) {
+          continue;
+        }
+        const existing = nextNodeIdsBySource.get(edge.source) ?? [];
+        if (!existing.includes(edge.target)) {
+          existing.push(edge.target);
+        }
+        nextNodeIdsBySource.set(edge.source, existing);
+      }
+      for (const [source, targets] of nextNodeIdsBySource.entries()) {
+        targets.sort((left, right) => (orderedIndexMap.get(left) ?? Number.MAX_SAFE_INTEGER) - (orderedIndexMap.get(right) ?? Number.MAX_SAFE_INTEGER));
+        nextNodeIdsBySource.set(source, targets);
+      }
 
       for (let i = 0; i < orderedIds.length; i += 1) {
         const id = orderedIds[i];
@@ -684,7 +1131,10 @@ export function useJobScenesPageModel() {
         await workflowService.upsertJobNode({
           ...rawNode,
           orderNo: i + 1,
-          configJson: mergeFlowPosition(rawNode.configJson, flowNode.position)
+          configJson: mergeFlowPosition(
+            mergeFlowNextNodeIds(rawNode.configJson, nextNodeIdsBySource.get(id) ?? []),
+            flowNode.position
+          )
         });
       }
 
@@ -697,13 +1147,31 @@ export function useJobScenesPageModel() {
     }
   }
 
+  async function selectFlowNode(nextNodeId: string | null) {
+    if (nextNodeId === selectedNodeId || switchingNodeRef.current) {
+      return;
+    }
+    switchingNodeRef.current = true;
+    try {
+      if (selectedNode && nodeDetailForm.isFieldsTouched()) {
+        await saveSelectedNode({ silent: true, persist: false });
+      }
+      setSelectedNodeId(nextNodeId);
+    } finally {
+      switchingNodeRef.current = false;
+    }
+  }
+
   return {
     drawerWidth, loading, statusFilter, setStatusFilter, filteredRows, openCreate, openEdit, switchStatus,
     openBuilder, openPreview, triggerFloating, confirmRisk, rows, linkedRulesByScene, open, closeSceneModal,
     submitScene, form, resources, executionLabel, editing, builderOpen, closeBuilder, savingFlow, saveFlowLayout,
-    autoLayoutNodes, builderScene, nodeRows, selectedNodeId, setSelectedNodeId, flowNodes, flowEdges,
+    autoLayoutNodes, builderScene, nodeRows, selectedNodeId, setSelectedNodeId, selectFlowNode, flowNodes, flowEdges,
     onFlowNodesChange, onFlowEdgesChange, onConnect, setReactFlowInstance, nodeLibrary, nodeTypeLabel,
-    addNodeFromLibrary, selectedNode, selectedNodeListData, listDatas, nodeDetailForm, watchedNodeType, saveSelectedNode, removeSelectedNode,
+    addNodeFromLibrary, addNodeFromLibraryAtClientPosition, selectedLibraryNodeType, previewLibraryNode, selectedNode, selectedNodeListData, pageFieldOptions, interfaces, listDatas, nodeDetailForm, watchedNodeType, removeSelectedNode, removeFlowNode,
+    selectedApiInputParams,
+    selectedApiOutputOptions,
+    nodeOutputReferenceOptions,
     previewOpen, setPreviewOpen, previewScene, previewRows, previewSelectedKeys, setPreviewSelectedKeys,
     previewLoading, previewExecuting, executePreview, holder, statusColor, autoOpenCreateRef,
     sceneSaveValidationReport: activeSceneSaveValidationReport,

@@ -340,6 +340,308 @@ function parseNodeConfig(configJson: string): Record<string, unknown> {
   }
 }
 
+function normalizeVariableSegment(raw: string) {
+  const compact = raw.trim().replace(/\s+/g, "_");
+  const sanitized = compact.replace(/[^a-zA-Z0-9_]/g, "_");
+  return sanitized.replace(/_+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
+}
+
+function deriveMachineKeyFromOutputPath(path: string) {
+  return normalizeVariableSegment(
+    path
+      .replace(/^\$\./, "")
+      .replace(/\[\d+\]/g, "")
+      .split(".")
+      .filter(Boolean)
+      .pop() ?? ""
+  );
+}
+
+function parseReferenceVariable(raw: string): string | null {
+  const match = /^\{\{([a-zA-Z0-9_]+)\}\}$/.exec(raw.trim());
+  return match ? match[1] : null;
+}
+
+function toDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function resolveBindingValue(
+  sourceType: unknown,
+  rawValue: unknown,
+  runtimeVariables: Record<string, string>
+): string {
+  const value = typeof rawValue === "string" ? rawValue : "";
+  if (sourceType !== "REFERENCE") {
+    return value;
+  }
+  const variable = parseReferenceVariable(value);
+  if (!variable) {
+    throw new Error(`引用格式无效: ${value}`);
+  }
+  if (!(variable in runtimeVariables)) {
+    throw new Error(`引用变量不存在: {{${variable}}}`);
+  }
+  return runtimeVariables[variable];
+}
+
+function deriveMockValueByKey(machineKey: string, resolvedInputs: Record<string, string>): string {
+  const compact = machineKey.toLowerCase();
+  if (compact.includes("score")) {
+    return "86";
+  }
+  if (compact.includes("risklevel") || compact.includes("risk_level") || compact.includes("level")) {
+    return "HIGH";
+  }
+  if (compact.includes("mobile")) {
+    return "13800008888";
+  }
+  const firstNonEmpty = Object.values(resolvedInputs).find((item) => item.trim().length > 0);
+  if (firstNonEmpty) {
+    return firstNonEmpty;
+  }
+  return `${machineKey || "output"}_value`;
+}
+
+function runScriptCode(scriptCode: string, input: Record<string, string>): unknown {
+  const executor = new Function("input", `"use strict";\n${scriptCode}`) as (inputArg: Record<string, string>) => unknown;
+  return executor(input);
+}
+
+function hotkeyKeyToCode(key: string): number | null {
+  if (!key) {
+    return null;
+  }
+  if (/^[A-Z]$/.test(key)) {
+    return key.charCodeAt(0);
+  }
+  if (/^[0-9]$/.test(key)) {
+    return key.charCodeAt(0);
+  }
+  if (/^F([1-9]|1[0-2])$/.test(key)) {
+    return 111 + Number(key.slice(1));
+  }
+  const staticMap: Record<string, number> = {
+    CTRL: 17,
+    ALT: 18,
+    SHIFT: 16,
+    META: 91,
+    ENTER: 13,
+    TAB: 9,
+    SPACE: 32,
+    ESC: 27,
+    BACKSPACE: 8,
+    DELETE: 46,
+    ARROW_UP: 38,
+    ARROW_DOWN: 40,
+    ARROW_LEFT: 37,
+    ARROW_RIGHT: 39
+  };
+  return staticMap[key] ?? null;
+}
+
+function executeRuntimeNode(
+  node: JobNodeDefinition,
+  runtimeVariables: Record<string, string>,
+  runtimePageFields: Record<string, string>
+) {
+  const config = parseNodeConfig(node.configJson);
+
+  if (node.nodeType === "page_get") {
+    const field = typeof config.field === "string" ? config.field.trim() : "";
+    const normalizedField = normalizeVariableSegment(field) || "page_value";
+    const variableKey = `node_${node.id}_${normalizedField}`;
+    const value = runtimePageFields[field] ?? `mock_${field || "page_value"}`;
+    runtimeVariables[variableKey] = value;
+    if (field) {
+      runtimePageFields[field] = value;
+    }
+    return {
+      detail: `读取字段 ${field || "page_value"} -> {{${variableKey}}}=${value}`
+    };
+  }
+
+  if (node.nodeType === "api_call") {
+    const resolvedInputs: Record<string, string> = {};
+    if (config.inputBindings && typeof config.inputBindings === "object" && !Array.isArray(config.inputBindings)) {
+      for (const [inputName, raw] of Object.entries(config.inputBindings as Record<string, unknown>)) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          continue;
+        }
+        const item = raw as Record<string, unknown>;
+        resolvedInputs[inputName] = resolveBindingValue(item.sourceType, item.value, runtimeVariables);
+      }
+    }
+
+    const outputPaths = Array.isArray(config.outputPaths)
+      ? (config.outputPaths as unknown[]).filter((item): item is string => typeof item === "string")
+      : [];
+    const outputSummaries: string[] = [];
+
+    for (const path of outputPaths) {
+      const machineKey = deriveMachineKeyFromOutputPath(path) || "api_output";
+      const variableKey = `node_${node.id}_${machineKey}`;
+      const value = deriveMockValueByKey(machineKey, resolvedInputs);
+      runtimeVariables[variableKey] = value;
+      outputSummaries.push(`${machineKey}={{${variableKey}}}=${value}`);
+    }
+
+    return {
+      detail:
+        outputSummaries.length > 0
+          ? `接口输出 ${outputSummaries.join("；")}`
+          : `节点执行成功：${node.nodeType}`
+    };
+  }
+
+  if (node.nodeType === "list_lookup") {
+    const inputSource = typeof config.inputSource === "string" ? config.inputSource : "";
+    const inputSourceType = config.inputSourceType === "REFERENCE" ? "REFERENCE" : "STRING";
+    const resolvedInput = resolveBindingValue(inputSourceType, inputSource, runtimeVariables);
+    const rawResultKeys = Array.isArray(config.resultKeys)
+      ? (config.resultKeys as unknown[])
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
+          .filter(Boolean)
+      : typeof config.resultKey === "string" && config.resultKey.trim()
+        ? [config.resultKey.trim()]
+        : ["list_lookup_result"];
+    const resultKeys = Array.from(new Set(rawResultKeys));
+    const outputSummaries: string[] = [];
+
+    for (const rawKey of resultKeys) {
+      const machineKey = normalizeVariableSegment(rawKey) || "list_lookup_result";
+      const variableKey = `node_${node.id}_${machineKey}`;
+      const compact = machineKey.toLowerCase();
+      let value = resolvedInput || "MATCHED";
+      if (compact.includes("score")) {
+        value = "92";
+      } else if (compact.includes("level")) {
+        value = "HIGH";
+      } else if (compact.includes("tag")) {
+        value = "WATCH";
+      } else if (compact.includes("expire")) {
+        value = "2026-12-31";
+      }
+      runtimeVariables[variableKey] = value;
+      outputSummaries.push(`${rawKey}={{${variableKey}}}=${value}`);
+    }
+
+    return {
+      detail: `名单输出 ${outputSummaries.join("；")}`
+    };
+  }
+
+  if (node.nodeType === "js_script") {
+    if (config.schemaVersion === 2 && Array.isArray(config.outputKeys)) {
+      const resolvedInputs: Record<string, string> = {};
+      if (config.inputBindings && typeof config.inputBindings === "object" && !Array.isArray(config.inputBindings)) {
+        for (const [inputName, raw] of Object.entries(config.inputBindings as Record<string, unknown>)) {
+          if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+            continue;
+          }
+          const item = raw as Record<string, unknown>;
+          resolvedInputs[inputName] = resolveBindingValue(item.sourceType, item.value, runtimeVariables);
+        }
+      }
+
+      const scriptCode = typeof config.scriptCode === "string" ? config.scriptCode : "";
+      let scriptResult: Record<string, unknown> = {};
+      try {
+        const returned = runScriptCode(scriptCode, resolvedInputs);
+        if (returned && typeof returned === "object" && !Array.isArray(returned)) {
+          scriptResult = returned as Record<string, unknown>;
+        } else {
+          scriptResult = { result: returned };
+        }
+      } catch (error) {
+        throw new Error(error instanceof Error ? `脚本执行失败: ${error.message}` : "脚本执行失败");
+      }
+
+      const outputKeys = Array.from(
+        new Set(
+          (config.outputKeys as unknown[])
+            .map((item) => (typeof item === "string" ? item.trim() : ""))
+            .filter(Boolean)
+        )
+      );
+      const outputSummaries: string[] = [];
+      for (const rawKey of outputKeys) {
+        const normalizedKey = normalizeVariableSegment(rawKey) || "script_output";
+        const variableKey = `node_${node.id}_${normalizedKey}`;
+        const value = toDisplayValue(scriptResult[rawKey] ?? scriptResult[normalizedKey] ?? "");
+        runtimeVariables[variableKey] = value;
+        outputSummaries.push(`${rawKey}={{${variableKey}}}=${value}`);
+      }
+      return {
+        detail: `脚本输出 ${outputSummaries.join("；")}`
+      };
+    }
+
+    const script = typeof config.script === "string" ? config.script.trim() : "";
+    const scriptKey = normalizeVariableSegment(script) || "script";
+    const variableKey = `node_${node.id}_${scriptKey}_result`;
+    const value = `${script || "script"}_result`;
+    runtimeVariables[variableKey] = value;
+    return {
+      detail: `脚本输出 result={{${variableKey}}}=${value}`
+    };
+  }
+
+  if (node.nodeType === "page_set") {
+    const target = typeof config.target === "string" ? config.target.trim() : "";
+    const valueType = config.valueType === "REFERENCE" ? "REFERENCE" : "STRING";
+    const resolvedValue = resolveBindingValue(valueType, config.value, runtimeVariables);
+    runtimePageFields[target || "unknown_field"] = resolvedValue;
+    return {
+      detail: `写入字段 ${target || "unknown_field"}=${resolvedValue}`
+    };
+  }
+
+  if (node.nodeType === "page_click") {
+    const target = typeof config.target === "string" ? config.target.trim() : "";
+    return {
+      detail: `点击字段 ${target || "unknown_field"}`
+    };
+  }
+
+  if (node.nodeType === "send_hotkey") {
+    const keys = Array.isArray(config.keys)
+      ? (config.keys as unknown[])
+          .map((item) => (typeof item === "string" ? item.trim().toUpperCase() : ""))
+          .filter(Boolean)
+      : [];
+    const keyCodes = Array.isArray(config.keyCodes)
+      ? (config.keyCodes as unknown[])
+          .map((item) => (typeof item === "number" && Number.isFinite(item) ? item : null))
+          .filter((item): item is number => typeof item === "number")
+      : keys
+          .map((item) => hotkeyKeyToCode(item))
+          .filter((item): item is number => typeof item === "number");
+    const displayKeys = keys.length > 0 ? keys.join("+") : "UNKNOWN";
+    const displayCodes = keyCodes.length > 0 ? keyCodes.join(",") : "-";
+    return {
+      detail: `发送热键 ${displayKeys} (${displayCodes})`
+    };
+  }
+
+  return {
+    detail: `节点执行成功：${node.nodeType}`
+  };
+}
+
 function executeSceneInternal(
   sceneId: number,
   sceneName: string,
@@ -355,6 +657,8 @@ function executeSceneInternal(
   let failed = false;
   let failReason = "";
   const logs: JobNodeRunLog[] = [];
+  const runtimeVariables: Record<string, string> = {};
+  const runtimePageFields: Record<string, string> = {};
 
   if (nodes.length === 0) {
     failed = true;
@@ -395,17 +699,35 @@ function executeSceneInternal(
         createdAt: nowIso()
       });
     } else {
-      logs.push({
-        id: nextId([...store.nodeLogs, ...logs]),
-        executionId,
-        nodeId: node.id,
-        nodeName: node.name,
-        nodeType: node.nodeType,
-        status: "SUCCESS",
-        latencyMs: 90 + node.orderNo * 50,
-        detail: `节点执行成功：${node.nodeType}`,
-        createdAt: nowIso()
-      });
+      try {
+        const runtime = executeRuntimeNode(node, runtimeVariables, runtimePageFields);
+        logs.push({
+          id: nextId([...store.nodeLogs, ...logs]),
+          executionId,
+          nodeId: node.id,
+          nodeName: node.name,
+          nodeType: node.nodeType,
+          status: "SUCCESS",
+          latencyMs: 90 + node.orderNo * 50,
+          detail: runtime.detail,
+          createdAt: nowIso()
+        });
+      } catch (error) {
+        failed = true;
+        const message = error instanceof Error ? error.message : `${node.nodeType} 节点失败`;
+        failReason = `${node.nodeType} 节点失败`;
+        logs.push({
+          id: nextId([...store.nodeLogs, ...logs]),
+          executionId,
+          nodeId: node.id,
+          nodeName: node.name,
+          nodeType: node.nodeType,
+          status: "FAILED",
+          latencyMs: 90 + node.orderNo * 50,
+          detail: message,
+          createdAt: nowIso()
+        });
+      }
     }
   }
 

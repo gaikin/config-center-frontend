@@ -9,7 +9,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -17,6 +16,7 @@ import {
   Statistic,
   Switch,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -26,7 +26,7 @@ import { DeleteOutlined, EditOutlined, EyeOutlined, InfoCircleOutlined, MoreOutl
 import type { MenuProps } from "antd";
 import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo, useState } from "react";
+import { type DragEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { EffectiveConfirmModal } from "../../components/EffectiveConfirmModal";
@@ -36,14 +36,20 @@ import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlock
 import { lifecycleLabelMap } from "../../enumLabels";
 import { orgOptions } from "../../orgOptions";
 import { useMockSession } from "../../session/mockSession";
+import { NodeLibraryPanel } from "./NodeLibraryPanel";
+import { readNodeTypeFromDragData } from "./nodeLibraryDnD";
+import { JobFlowNode } from "./JobFlowNode";
 import { useJobScenesPageModel } from "./useJobScenesPageModel";
 import {
   buildExecutionMode,
   derivePreviewBeforeExecute,
+  FlowEdge,
+  FlowNode,
+  HOTKEY_MAIN_KEY_OPTIONS,
+  HOTKEY_MODIFIER_OPTIONS,
   deriveTriggerMode,
   getRunModeLabel,
   getTriggerModeLabel,
-  nodeTypeLabel,
   StatusFilter,
   type TriggerMode
 } from "./jobScenesPageShared";
@@ -59,6 +65,9 @@ type EffectiveTarget = {
 const DEFAULT_FLOATING_BUTTON_LABEL = "重新执行";
 const DEFAULT_FLOATING_BUTTON_X = 86;
 const DEFAULT_FLOATING_BUTTON_Y = 78;
+const INLINE_TYPE_WIDTH = 128;
+const API_INPUT_LABEL_WIDTH = 96;
+const API_INPUT_TYPE_WIDTH = 90;
 
 const PageHeader = styled.div`
   margin-bottom: var(--space-16);
@@ -126,7 +135,7 @@ export function JobScenesPage() {
     saveFlowLayout,
     autoLayoutNodes,
     builderScene,
-    setSelectedNodeId,
+    selectFlowNode,
     flowNodes,
     flowEdges,
     onFlowNodesChange,
@@ -135,13 +144,20 @@ export function JobScenesPage() {
     setReactFlowInstance,
     nodeLibrary,
     addNodeFromLibrary,
+    addNodeFromLibraryAtClientPosition,
+    selectedLibraryNodeType,
+    previewLibraryNode,
     selectedNode,
     selectedNodeListData,
+    pageFieldOptions,
+    interfaces,
     listDatas,
     nodeDetailForm,
+    selectedApiInputParams,
+    selectedApiOutputOptions,
+    nodeOutputReferenceOptions,
     watchedNodeType,
-    saveSelectedNode,
-    removeSelectedNode,
+    removeFlowNode,
     previewOpen,
     setPreviewOpen,
     previewScene,
@@ -171,6 +187,7 @@ export function JobScenesPage() {
   const [effectiveBlockedMessage, setEffectiveBlockedMessage] = useState<string | null>(null);
   const [effectiveScopeMode, setEffectiveScopeMode] = useState<EffectiveScopeMode>("ALL_ORGS");
   const [effectiveScopeOrgIds, setEffectiveScopeOrgIds] = useState<string[]>([]);
+  const [canvasDragOver, setCanvasDragOver] = useState(false);
   const effectiveMeta = effectiveTarget ? getEffectiveActionMeta(effectiveTarget.status) : null;
   const effectiveScopeOptions = useMemo(
     () => orgOptions.map((item) => ({ label: item.label, value: String(item.value) })),
@@ -238,6 +255,17 @@ export function JobScenesPage() {
   const watchedExecutionMode = Form.useWatch("executionMode", form) as ExecutionMode | undefined;
   const watchedPreviewBeforeExecute = Form.useWatch("previewBeforeExecute", form) as boolean | undefined;
   const watchedFloatingButtonEnabled = Form.useWatch("floatingButtonEnabled", form) as boolean | undefined;
+  const watchedInputSourceType = Form.useWatch("inputSourceType", nodeDetailForm) as "STRING" | "REFERENCE" | undefined;
+  const watchedInputSourceValue = Form.useWatch("inputSource", nodeDetailForm) as string | undefined;
+  const watchedValueType = Form.useWatch("valueType", nodeDetailForm) as "STRING" | "REFERENCE" | undefined;
+  const watchedValue = Form.useWatch("value", nodeDetailForm) as string | undefined;
+  const watchedApiInputBindings = Form.useWatch("apiInputBindings", nodeDetailForm) as
+    | Record<string, { sourceType?: "STRING" | "REFERENCE"; value?: string }>
+    | undefined;
+  const watchedScriptInputs = Form.useWatch("scriptInputs", nodeDetailForm) as
+    | Array<{ name?: string; sourceType?: "STRING" | "REFERENCE"; value?: string }>
+    | undefined;
+  const watchedApiRefactorRequired = Form.useWatch("apiRefactorRequired", nodeDetailForm) as boolean | undefined;
   const selectedTriggerMode: TriggerMode = watchedExecutionMode ? deriveTriggerMode(watchedExecutionMode) : "AUTO";
   const selectedPreviewBeforeExecute = Boolean(watchedPreviewBeforeExecute);
   const floatingRetriggerEnabled = selectedTriggerMode === "BUTTON" || Boolean(watchedFloatingButtonEnabled);
@@ -251,6 +279,131 @@ export function JobScenesPage() {
   }, [editing?.id, linkedRulesByScene]);
   const promptPriorityConflict = watchedExecutionMode === "AUTO_WITHOUT_PROMPT" && linkedFloatingPromptRules.length > 0;
   const currentSceneStatus: LifecycleState = editing?.status ?? "DRAFT";
+  const activeNodeType = selectedNode?.nodeType ?? watchedNodeType;
+  const nodeTypes = useMemo(() => ({ jobNode: JobFlowNode }), []);
+  const flowNodesWithActions = useMemo<FlowNode[]>(
+    () =>
+      flowNodes.map((item) => ({
+        ...item,
+        data: {
+          ...item.data,
+          onDelete: () => void removeFlowNode(item.id)
+        }
+      })),
+    [flowNodes, removeFlowNode]
+  );
+  const apiInputTabItems = useMemo(() => {
+    const tabOrder = [
+      { key: "body", label: "Body" },
+      { key: "query", label: "Query" },
+      { key: "path", label: "Path" },
+      { key: "headers", label: "Header" }
+    ] as const;
+    return tabOrder
+      .map((tab) => {
+        const params = selectedApiInputParams.filter((item) => item.tab === tab.key);
+        return {
+          key: tab.key,
+          label: `${tab.label}${params.length > 0 ? ` (${params.length})` : ""}`,
+          params
+        };
+      })
+      .filter((tab) => tab.params.length > 0);
+  }, [selectedApiInputParams]);
+
+  useEffect(() => {
+    if (activeNodeType !== "list_lookup" || watchedInputSourceType !== "REFERENCE") {
+      return;
+    }
+    const currentValue = watchedInputSourceValue?.trim();
+    if (!currentValue) {
+      return;
+    }
+    const matched = nodeOutputReferenceOptions.some((item) => item.value === currentValue);
+    if (!matched) {
+      nodeDetailForm.setFieldValue("inputSource", undefined);
+    }
+  }, [activeNodeType, nodeDetailForm, nodeOutputReferenceOptions, watchedInputSourceType, watchedInputSourceValue]);
+
+  useEffect(() => {
+    if (activeNodeType !== "page_set" || watchedValueType !== "REFERENCE") {
+      return;
+    }
+    const currentValue = watchedValue?.trim();
+    if (!currentValue) {
+      return;
+    }
+    const matched = nodeOutputReferenceOptions.some((item) => item.value === currentValue);
+    if (!matched) {
+      nodeDetailForm.setFieldValue("value", undefined);
+    }
+  }, [activeNodeType, nodeDetailForm, nodeOutputReferenceOptions, watchedValue, watchedValueType]);
+
+  useEffect(() => {
+    if (activeNodeType !== "api_call") {
+      return;
+    }
+    const bindings = watchedApiInputBindings ?? {};
+    let hasInvalidValue = false;
+    const nextBindings: Record<string, { sourceType: "STRING" | "REFERENCE"; value: string }> = {};
+    for (const [key, raw] of Object.entries(bindings)) {
+      const sourceType = raw?.sourceType === "REFERENCE" ? "REFERENCE" : "STRING";
+      const value = typeof raw?.value === "string" ? raw.value : "";
+      const validReference = sourceType !== "REFERENCE" || !value.trim() || nodeOutputReferenceOptions.some((item) => item.value === value.trim());
+      nextBindings[key] = {
+        sourceType,
+        value: validReference ? value : ""
+      };
+      if (!validReference) {
+        hasInvalidValue = true;
+      }
+    }
+    if (hasInvalidValue) {
+      nodeDetailForm.setFieldValue("apiInputBindings", nextBindings);
+    }
+  }, [activeNodeType, nodeDetailForm, nodeOutputReferenceOptions, watchedApiInputBindings]);
+
+  useEffect(() => {
+    if (activeNodeType !== "js_script") {
+      return;
+    }
+    const scriptInputs = watchedScriptInputs ?? [];
+    let hasInvalidValue = false;
+    const nextScriptInputs = scriptInputs.map((item) => {
+      const sourceType = item?.sourceType === "REFERENCE" ? "REFERENCE" : "STRING";
+      const value = typeof item?.value === "string" ? item.value : "";
+      const validReference = sourceType !== "REFERENCE" || !value.trim() || nodeOutputReferenceOptions.some((option) => option.value === value.trim());
+      if (!validReference) {
+        hasInvalidValue = true;
+      }
+      return {
+        name: typeof item?.name === "string" ? item.name : "",
+        sourceType,
+        value: validReference ? value : ""
+      };
+    });
+    if (hasInvalidValue) {
+      nodeDetailForm.setFieldValue("scriptInputs", nextScriptInputs);
+    }
+  }, [activeNodeType, nodeDetailForm, nodeOutputReferenceOptions, watchedScriptInputs]);
+
+  const handleFlowDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    if (!canvasDragOver) {
+      setCanvasDragOver(true);
+    }
+  }, [canvasDragOver]);
+
+  const handleFlowDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setCanvasDragOver(false);
+    const nodeType = readNodeTypeFromDragData(event.dataTransfer);
+    if (!nodeType) {
+      return;
+    }
+    void addNodeFromLibraryAtClientPosition(nodeType, { x: event.clientX, y: event.clientY });
+  }, [addNodeFromLibraryAtClientPosition]);
 
   const sceneCards = [
     {
@@ -274,12 +427,6 @@ export function JobScenesPage() {
         label: "编辑",
         icon: <EditOutlined />,
         onClick: () => openEdit(row)
-      },
-      {
-        key: "builder",
-        label: "作业编排",
-        icon: <PartitionOutlined />,
-        onClick: () => void openBuilder(row)
       },
       {
         key: "preview",
@@ -380,7 +527,7 @@ export function JobScenesPage() {
       {holder}
       {msgHolder}
       <PageHeader>
-        <Typography.Title level={4}>智能作业</Typography.Title>
+        <Typography.Title level={4}>作业编排</Typography.Title>
       </PageHeader>
       {publishNotice ? (
         <PublishContinuationAlert
@@ -470,6 +617,13 @@ export function JobScenesPage() {
           </Col>
           <Col xs={24} lg={15}>
             <ActionBar>
+              <Button
+                icon={<PartitionOutlined />}
+                disabled={searchedRows.length === 0}
+                onClick={() => (searchedRows[0] ? void openBuilder(searchedRows[0]) : undefined)}
+              >
+                打开最新编排
+              </Button>
               <Segmented
                 value={statusFilter}
                 onChange={(value) => setStatusFilter(value as StatusFilter)}
@@ -557,12 +711,15 @@ export function JobScenesPage() {
             { title: "状态", width: 100, render: (_, row) => <Tag color={statusColor[row.status]}>{lifecycleLabelMap[row.status]}</Tag> },
             {
               title: "操作",
-              width: 230,
+              width: 300,
               render: (_, row) => {
                 const actionMeta = getEffectiveActionMeta(row.status);
                 const actionBlocked = getEffectivePermissionBlockedMessage(actionMeta.type, hasResource);
                 return (
                   <Space wrap>
+                    <Button size="small" type="primary" icon={<PartitionOutlined />} onClick={() => void openBuilder(row)}>
+                      作业编排
+                    </Button>
                     <Button size="small" onClick={() => openEdit(row)}>
                       编辑
                     </Button>
@@ -771,23 +928,15 @@ export function JobScenesPage() {
       >
         <Space direction="vertical" style={{ width: "100%" }} size={12}>
           <Card title="节点编排区" size="small">
-            <div style={{ display: "flex", gap: 12, alignItems: "stretch", overflowX: "auto" }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "stretch", overflowX: "auto", position: "relative" }}>
               <Card title="节点库" style={{ flex: "0 0 220px" }}>
-                <Space direction="vertical" style={{ width: "100%" }}>
-                  {nodeLibrary.map((item) => (
-                    <Button
-                      key={item.nodeType}
-                      block
-                      disabled={item.nodeType === "list_lookup" && listDatas.length === 0}
-                      onClick={() => void addNodeFromLibrary(item.nodeType)}
-                    >
-                      {item.label}
-                    </Button>
-                  ))}
-                </Space>
-                <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-                  点击节点类型即可加入画布。
-                </Typography.Paragraph>
+                <NodeLibraryPanel
+                  items={nodeLibrary}
+                  selectedNodeType={selectedLibraryNodeType}
+                  disabledNodeTypes={listDatas.length === 0 ? ["list_lookup"] : []}
+                  onSelect={previewLibraryNode}
+                  onAdd={(nodeType) => void addNodeFromLibrary(nodeType)}
+                />
                 {listDatas.length === 0 ? (
                   <Alert
                     type="warning"
@@ -810,19 +959,30 @@ export function JobScenesPage() {
                 {flowNodes.length === 0 ? (
                   <Alert type="warning" showIcon message="当前场景暂无节点，请先从左侧节点库添加。" style={{ marginBottom: 12 }} />
                 ) : null}
-                <div style={{ width: "100%", height: 520, border: "1px solid #f0f0f0", borderRadius: 8 }}>
+                <div
+                  style={{
+                    width: "100%",
+                    height: 520,
+                    border: canvasDragOver ? "1px dashed #1677ff" : "1px solid #f0f0f0",
+                    borderRadius: 8
+                  }}
+                  onDragOver={handleFlowDragOver}
+                  onDragLeave={() => setCanvasDragOver(false)}
+                  onDrop={handleFlowDrop}
+                >
                   <ReactFlowProvider>
-                    <ReactFlow
-                      nodes={flowNodes}
+                    <ReactFlow<FlowNode, FlowEdge>
+                      nodes={flowNodesWithActions}
                       edges={flowEdges}
+                      nodeTypes={nodeTypes}
                       onNodesChange={onFlowNodesChange}
                       onEdgesChange={onFlowEdgesChange}
                       onConnect={onConnect}
                       onInit={(instance) => setReactFlowInstance(instance)}
-                      onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-                      onPaneClick={() => setSelectedNodeId(null)}
+                      onNodeClick={(_, node) => void selectFlowNode(node.id)}
+                      onPaneClick={() => void selectFlowNode(null)}
                       minZoom={0.15}
-                      fitView={flowNodes.length > 0}
+                      fitView={flowNodesWithActions.length > 0}
                       fitViewOptions={{ padding: 0.1, minZoom: 0.15, maxZoom: 1.2 }}
                     >
                       <MiniMap zoomable pannable />
@@ -836,41 +996,180 @@ export function JobScenesPage() {
                 </Typography.Paragraph>
               </Card>
 
-              <Card title="节点属性" style={{ flex: "0 0 320px", minWidth: 320 }}>
-                {!selectedNode ? (
-                  <Typography.Text type="secondary">请先在画布中点击一个节点，再编辑节点属性。</Typography.Text>
-                ) : (
-                  <>
-                    <ValidationReportPanel issues={nodeValidationIssues} title="节点属性还有待处理问题" />
-                    <Form form={nodeDetailForm} layout="vertical">
+              {selectedNode ? (
+                <Card
+                  title="节点属性"
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
+                    width: 360,
+                    maxHeight: 560,
+                    overflowY: "auto",
+                    zIndex: 20,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)"
+                  }}
+                >
+                  <ValidationReportPanel issues={nodeValidationIssues} title="节点属性还有待处理问题" />
+                  <Form form={nodeDetailForm} layout="vertical">
                       <Form.Item name="name" label="节点名称" rules={[{ required: true, message: "请输入节点名称" }]}>
                         <Input placeholder="请输入节点名称" />
                       </Form.Item>
-                      <Form.Item name="nodeType" label="节点类型" rules={[{ required: true }]}>
-                        <Select options={Object.entries(nodeTypeLabel).map(([value, label]) => ({ label, value }))} />
-                      </Form.Item>
-                      <Form.Item name="enabled" label="启用状态" rules={[{ required: true }]}>
-                        <Select options={[{ label: "启用", value: true }, { label: "停用", value: false }]} />
+                      <Form.Item name="nodeType" hidden>
+                        <Input />
                       </Form.Item>
 
-                      {watchedNodeType === "page_get" ? (
-                        <Form.Item name="field" label="读取字段" rules={[{ required: true, message: "请输入字段名" }]}>
-                          <Input placeholder="如: customer_id" />
-                        </Form.Item>
+                      {activeNodeType === "page_get" ? (
+                        <>
+                          <Form.Item name="field" label="读取字段" rules={[{ required: true, message: "请选择读取字段" }]}>
+                            <Select
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder={pageFieldOptions.length > 0 ? "请选择页面字段" : "当前页面无可配置字段"}
+                              options={pageFieldOptions}
+                              disabled={pageFieldOptions.length === 0}
+                            />
+                          </Form.Item>
+                          {pageFieldOptions.length === 0 ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              message="当前页面未配置业务字段"
+                              description="请先在页面字段映射中配置字段后再使用页面取值节点。"
+                              style={{ marginBottom: 12 }}
+                            />
+                          ) : null}
+                        </>
                       ) : null}
 
-                      {watchedNodeType === "api_call" ? (
+                      {activeNodeType === "api_call" ? (
                         <>
-                          <Form.Item name="interfaceId" label="接口ID" rules={[{ required: true, message: "请输入接口ID" }]}>
-                            <InputNumber min={1} style={{ width: "100%" }} />
+                          {watchedApiRefactorRequired ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message="接口调用节点已升级"
+                              description="该节点使用旧配置，已清空。请重新选择接口并配置入参与出参。"
+                            />
+                          ) : null}
+                          <Form.Item name="apiRefactorRequired" hidden>
+                            <Input />
                           </Form.Item>
-                          <Form.Item name="forceFail" label="模拟失败">
-                            <Select options={[{ label: "否", value: false }, { label: "是", value: true }]} />
+                          <Form.Item name="apiInterfaceId" label="接口" rules={[{ required: true, message: "请选择接口" }]}>
+                            <Select
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder={interfaces.length > 0 ? "请选择接口" : "暂无可用接口"}
+                              options={interfaces.map((item) => ({ label: `${item.name} (#${item.id})`, value: item.id }))}
+                              disabled={interfaces.length === 0}
+                            />
+                          </Form.Item>
+                          {interfaces.length === 0 ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message="当前没有可用接口"
+                              description="请先到接口中心发布接口后，再配置接口调用节点。"
+                            />
+                          ) : null}
+
+                          {selectedApiInputParams.length > 0 ? (
+                            <Form.Item label="接口入参">
+                              <Tabs
+                                size="small"
+                                items={apiInputTabItems.map((tab) => ({
+                                  key: tab.key,
+                                  label: tab.label,
+                                  children: (
+                                    <Space direction="vertical" size={8} style={{ width: "100%", paddingTop: 4 }}>
+                                      {tab.params.map((param) => {
+                                        const sourceType =
+                                          watchedApiInputBindings?.[param.name]?.sourceType === "REFERENCE"
+                                            ? "REFERENCE"
+                                            : "STRING";
+                                        return (
+                                          <div
+                                            key={param.name}
+                                            style={{
+                                              display: "grid",
+                                              gridTemplateColumns: `${API_INPUT_LABEL_WIDTH}px ${API_INPUT_TYPE_WIDTH}px minmax(0, 1fr)`,
+                                              alignItems: "center",
+                                              columnGap: 8
+                                            }}
+                                          >
+                                            <div style={{ minWidth: 0 }}>
+                                              <Typography.Text strong>{param.name}</Typography.Text>
+                                              {param.required ? (
+                                                <Typography.Text type="danger" style={{ marginLeft: 4 }}>
+                                                  *
+                                                </Typography.Text>
+                                              ) : null}
+                                            </div>
+                                            <Form.Item
+                                              name={["apiInputBindings", param.name, "sourceType"]}
+                                              noStyle
+                                              initialValue="STRING"
+                                            >
+                                              <Select
+                                                style={{ width: "100%" }}
+                                                options={[
+                                                  { label: "string", value: "STRING" },
+                                                  { label: "引用", value: "REFERENCE" }
+                                                ]}
+                                              />
+                                            </Form.Item>
+                                            <Form.Item name={["apiInputBindings", param.name, "value"]} noStyle>
+                                              {sourceType === "REFERENCE" ? (
+                                                <Select
+                                                  style={{ width: "100%" }}
+                                                  showSearch
+                                                  optionFilterProp="label"
+                                                  placeholder="请选择上游输出引用"
+                                                  options={nodeOutputReferenceOptions}
+                                                  notFoundContent="暂无可用上游输出"
+                                                />
+                                              ) : (
+                                                <Input style={{ width: "100%" }} placeholder="请输入字符串值" />
+                                              )}
+                                            </Form.Item>
+                                          </div>
+                                        );
+                                      })}
+                                    </Space>
+                                  )
+                                }))}
+                              />
+                            </Form.Item>
+                          ) : (
+                            <Alert
+                              type="info"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message="当前接口没有入参"
+                              description="无需配置接口入参。"
+                            />
+                          )}
+
+                          <Form.Item
+                            name="apiOutputPaths"
+                            label="接口出参"
+                            rules={[{ required: true, message: "请至少选择一个出参字段" }]}
+                          >
+                            <Select
+                              mode="multiple"
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder={selectedApiOutputOptions.length > 0 ? "请选择对下游可见的出参字段" : "当前接口无可用出参"}
+                              options={selectedApiOutputOptions.map((item) => ({ label: item.label, value: item.path }))}
+                              disabled={selectedApiOutputOptions.length === 0}
+                            />
                           </Form.Item>
                         </>
                       ) : null}
 
-                      {watchedNodeType === "list_lookup" ? (
+                      {activeNodeType === "list_lookup" ? (
                         listDatas.length === 0 ? (
                           <Alert
                             type="warning"
@@ -899,12 +1198,18 @@ export function JobScenesPage() {
                                 onChange={(value) => {
                                   const picked = listDatas.find((item) => item.id === value);
                                   const currentMatchColumn = nodeDetailForm.getFieldValue("matchColumn");
+                                  const currentResultKeys = (nodeDetailForm.getFieldValue("resultKeys") as string[] | undefined) ?? [];
+                                  const candidateOutputs = picked
+                                    ? (picked.outputFields.length > 0 ? picked.outputFields : picked.importColumns)
+                                    : [];
+                                  const normalizedResultKeys = currentResultKeys.filter((item) => candidateOutputs.includes(item));
                                   nodeDetailForm.setFieldsValue({
                                     listDataId: value as number | undefined,
                                     matchColumn:
                                       picked?.importColumns.includes(currentMatchColumn)
                                         ? currentMatchColumn
-                                        : picked?.importColumns[0] ?? ""
+                                        : picked?.importColumns[0] ?? "",
+                                    resultKeys: normalizedResultKeys.length > 0 ? normalizedResultKeys : candidateOutputs.slice(0, 1)
                                   });
                                 }}
                               />
@@ -916,50 +1221,244 @@ export function JobScenesPage() {
                                 options={(selectedNodeListData?.importColumns ?? []).map((item) => ({ label: item, value: item }))}
                               />
                             </Form.Item>
-                            <Form.Item name="inputSource" label="输入来源" rules={[{ required: true, message: "请输入输入来源" }]}>
-                              <Input placeholder="如: customer_id（页面字段或上游结果键）" />
+                            <Form.Item label="输入来源">
+                              <Space.Compact style={{ width: "100%" }}>
+                                <Form.Item name="inputSourceType" noStyle rules={[{ required: true, message: "请选择输入来源类型" }]}>
+                                  <Select
+                                    style={{ width: INLINE_TYPE_WIDTH }}
+                                    options={[
+                                      { label: "string", value: "STRING" },
+                                      { label: "引用", value: "REFERENCE" }
+                                    ]}
+                                  />
+                                </Form.Item>
+                                <Form.Item name="inputSource" noStyle rules={[{ required: true, message: "请输入输入来源" }]}>
+                                  {watchedInputSourceType === "REFERENCE" ? (
+                                    <Select
+                                      style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }}
+                                      showSearch
+                                      optionFilterProp="label"
+                                      placeholder="请选择上游输出引用"
+                                      options={nodeOutputReferenceOptions}
+                                      notFoundContent="暂无可用上游输出"
+                                    />
+                                  ) : (
+                                    <Input style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }} placeholder="请输入字符串来源，如 customer_id" />
+                                  )}
+                                </Form.Item>
+                              </Space.Compact>
                             </Form.Item>
-                            <Form.Item name="resultKey" label="结果键名" rules={[{ required: true, message: "请输入结果键名" }]}>
-                              <Input placeholder="如: high_risk_match" />
+                            <Form.Item name="resultKeys" label="输出字段" rules={[{ required: true, message: "请至少选择一个输出字段" }]}>
+                              <Select
+                                mode="multiple"
+                                showSearch
+                                optionFilterProp="label"
+                                placeholder={selectedNodeListData ? "请选择可输出给下游的字段" : "请先选择名单数据"}
+                                options={((selectedNodeListData?.outputFields?.length ? selectedNodeListData.outputFields : selectedNodeListData?.importColumns) ?? []).map((item) => ({
+                                  label: item,
+                                  value: item
+                                }))}
+                              />
                             </Form.Item>
                           </>
                         )
                       ) : null}
 
-                      {watchedNodeType === "js_script" ? (
-                        <Form.Item name="script" label="脚本标识" rules={[{ required: true, message: "请输入脚本标识" }]}>
-                          <Input placeholder="如: maskMobile" />
-                        </Form.Item>
-                      ) : null}
-
-                      {watchedNodeType === "page_set" ? (
+                      {activeNodeType === "js_script" ? (
                         <>
-                          <Form.Item name="target" label="写入目标字段" rules={[{ required: true, message: "请输入目标字段" }]}>
-                            <Input placeholder="如: risk_score" />
+                          <Form.Item name="scriptCode" label="脚本代码" rules={[{ required: true, message: "请输入脚本代码" }]}>
+                            <Input.TextArea
+                              autoSize={{ minRows: 5, maxRows: 10 }}
+                              placeholder="例如：return { score: Number(input.riskRef || 0), level: 'HIGH' };"
+                            />
                           </Form.Item>
-                          <Form.Item name="value" label="写入值(可选)">
-                            <Input placeholder="可留空，使用上游结果" />
+                          <Form.Item label="输入变量">
+                            <Form.List name="scriptInputs">
+                              {(fields, { add, remove }) => (
+                                <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                                  {fields.map((field) => {
+                                    const sourceType = watchedScriptInputs?.[field.name]?.sourceType === "REFERENCE" ? "REFERENCE" : "STRING";
+                                    return (
+                                      <div
+                                        key={field.key}
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "180px 1fr auto",
+                                          gap: 8,
+                                          alignItems: "center"
+                                        }}
+                                      >
+                                        <Form.Item
+                                          {...field}
+                                          name={[field.name, "name"]}
+                                          style={{ marginBottom: 0 }}
+                                          rules={[{ required: true, message: "请输入变量名" }]}
+                                        >
+                                          <Input placeholder="变量名，如 customerId" />
+                                        </Form.Item>
+                                        <Space.Compact style={{ width: "100%" }}>
+                                          <Form.Item {...field} name={[field.name, "sourceType"]} noStyle initialValue="STRING">
+                                            <Select
+                                              style={{ width: INLINE_TYPE_WIDTH }}
+                                              options={[
+                                                { label: "string", value: "STRING" },
+                                                { label: "引用", value: "REFERENCE" }
+                                              ]}
+                                            />
+                                          </Form.Item>
+                                          <Form.Item {...field} name={[field.name, "value"]} noStyle>
+                                            {sourceType === "REFERENCE" ? (
+                                              <Select
+                                                style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }}
+                                                showSearch
+                                                allowClear
+                                                optionFilterProp="label"
+                                                placeholder="请选择上游输出引用"
+                                                options={nodeOutputReferenceOptions}
+                                                notFoundContent="暂无可用上游输出"
+                                                disabled={nodeOutputReferenceOptions.length === 0}
+                                              />
+                                            ) : (
+                                              <Input style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }} placeholder="请输入字符串常量" />
+                                            )}
+                                          </Form.Item>
+                                        </Space.Compact>
+                                        <Button
+                                          danger
+                                          type="text"
+                                          icon={<DeleteOutlined />}
+                                          aria-label="remove-script-input"
+                                          onClick={() => remove(field.name)}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                  <Button
+                                    type="dashed"
+                                    icon={<PlusOutlined />}
+                                    onClick={() =>
+                                      add({
+                                        name: `input${fields.length + 1}`,
+                                        sourceType: "STRING",
+                                        value: ""
+                                      })
+                                    }
+                                  >
+                                    添加输入变量
+                                  </Button>
+                                </Space>
+                              )}
+                            </Form.List>
+                          </Form.Item>
+                          <Form.Item name="scriptOutputKeys" label="输出字段" rules={[{ required: true, message: "请至少配置一个输出字段" }]}>
+                            <Select
+                              mode="tags"
+                              tokenSeparators={[",", " "]}
+                              placeholder="输入输出字段名后回车，例如 score"
+                            />
                           </Form.Item>
                         </>
                       ) : null}
-                    </Form>
 
-                    <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                      <Typography.Text type="secondary">修改后请先保存节点属性</Typography.Text>
-                      <Space>
-                        <Button type="primary" onClick={() => void saveSelectedNode()}>
-                          保存属性
-                        </Button>
-                        <Popconfirm title="确认删除当前节点?" onConfirm={() => void removeSelectedNode()}>
-                          <Tooltip title="删除节点">
-                            <Button danger icon={<DeleteOutlined />} aria-label="delete-node" />
-                          </Tooltip>
-                        </Popconfirm>
-                      </Space>
-                    </Space>
-                  </>
-                )}
-              </Card>
+                      {activeNodeType === "page_set" ? (
+                        <>
+                          <Form.Item name="target" label="写入目标字段" rules={[{ required: true, message: "请选择写入目标字段" }]}>
+                            <Select
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder={pageFieldOptions.length > 0 ? "请选择写入目标字段" : "当前页面无可配置字段"}
+                              options={pageFieldOptions}
+                              disabled={pageFieldOptions.length === 0}
+                            />
+                          </Form.Item>
+                          {pageFieldOptions.length === 0 ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message="当前页面未配置业务字段"
+                              description="请先到页面资源维护业务字段后，再配置页面写值节点。"
+                            />
+                          ) : null}
+                          <Form.Item label="写入值">
+                            <Space.Compact style={{ width: "100%" }}>
+                              <Form.Item name="valueType" noStyle>
+                                <Select
+                                  style={{ width: INLINE_TYPE_WIDTH }}
+                                  options={[
+                                    { label: "string", value: "STRING" },
+                                    { label: "引用", value: "REFERENCE" }
+                                  ]}
+                                />
+                              </Form.Item>
+                              <Form.Item name="value" noStyle>
+                                {watchedValueType === "REFERENCE" ? (
+                                  <Select
+                                    style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }}
+                                    showSearch
+                                    allowClear
+                                    optionFilterProp="label"
+                                    placeholder="请选择上游输出引用"
+                                    options={nodeOutputReferenceOptions}
+                                    notFoundContent="暂无可用上游输出"
+                                    disabled={nodeOutputReferenceOptions.length === 0}
+                                  />
+                                ) : (
+                                  <Input style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }} placeholder="请输入常量值（可为空）" />
+                                )}
+                              </Form.Item>
+                            </Space.Compact>
+                          </Form.Item>
+                        </>
+                      ) : null}
+
+                      {activeNodeType === "page_click" ? (
+                        <>
+                          <Form.Item name="target" label="点击目标字段" rules={[{ required: true, message: "请选择点击目标字段" }]}>
+                            <Select
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder={pageFieldOptions.length > 0 ? "请选择点击目标字段" : "当前页面无可配置字段"}
+                              options={pageFieldOptions}
+                              disabled={pageFieldOptions.length === 0}
+                            />
+                          </Form.Item>
+                          {pageFieldOptions.length === 0 ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message="当前页面未配置业务字段"
+                              description="请先到页面资源维护业务字段后，再配置页面点击节点。"
+                            />
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      {activeNodeType === "send_hotkey" ? (
+                        <>
+                          <Form.Item name="hotkeyModifiers" label="修饰键">
+                            <Select
+                              mode="multiple"
+                              allowClear
+                              placeholder="可选：Ctrl / Alt / Shift / Meta"
+                              options={HOTKEY_MODIFIER_OPTIONS}
+                            />
+                          </Form.Item>
+                          <Form.Item name="hotkeyKey" label="主键" rules={[{ required: true, message: "请选择主键" }]}>
+                            <Select
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder="请选择主键"
+                              options={HOTKEY_MAIN_KEY_OPTIONS}
+                            />
+                          </Form.Item>
+                        </>
+                      ) : null}
+                  </Form>
+
+                </Card>
+              ) : null}
             </div>
           </Card>
         </Space>

@@ -26,7 +26,9 @@ import {
   seedRules,
   seedSdkArtifactVersions,
   seedPlatformRuntimeConfig,
-  seedTriggerLogs
+  seedTriggerLogs,
+  seedPromptHitRecords,
+  seedJobExecutionRecords
 } from "../mock/seeds";
 import { getOrgLabel } from "../orgOptions";
 import { notifyRolePermissionsChanged } from "../session/sessionEvents";
@@ -40,6 +42,8 @@ import type {
   BusinessFieldDefinition,
   DashboardOverview,
   ExecutionLogItem,
+  JobExecutionRecord,
+  JobExecutionRecordFilters,
   FailureReasonMetric,
   PublishAuditLog,
   PublishPendingItem,
@@ -70,6 +74,8 @@ import type {
   RuleDefinition,
   SaveDraftResult,
   SdkArtifactVersion,
+  PromptHitRecord,
+  PromptHitRecordFilters,
   TriggerLogItem,
   UserRoleBinding,
   ValidationItem,
@@ -131,6 +137,8 @@ const store = {
   auditLogs: structuredClone(seedAuditLogs),
   triggerLogs: structuredClone(seedTriggerLogs),
   executionLogs: structuredClone(seedExecutionLogs),
+  promptHitRecords: structuredClone(seedPromptHitRecords),
+  jobExecutionRecords: structuredClone(seedJobExecutionRecords),
   roles: structuredClone(seedRoles),
   permissionResources: structuredClone(seedPermissionResources),
   roleResourceGrants: structuredClone(seedRoleResourceGrants),
@@ -177,6 +185,76 @@ function normalizePublishEffectiveOptions(
     };
   }
   return options ?? {};
+}
+
+function normalizeKeyword(value: string | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function isWithinIsoRange(value: string, startAt?: string, endAt?: string) {
+  if (startAt && value < startAt) {
+    return false;
+  }
+  if (endAt && value > endAt) {
+    return false;
+  }
+  return true;
+}
+
+function matchesPromptHitRecordFilters(item: PromptHitRecord, filters: PromptHitRecordFilters) {
+  const keyword = normalizeKeyword(filters.keyword);
+  if (filters.ruleId && item.ruleId !== filters.ruleId) {
+    return false;
+  }
+  if (filters.pageResourceId && item.pageResourceId !== filters.pageResourceId) {
+    return false;
+  }
+  if (filters.orgId && item.orgId !== filters.orgId) {
+    return false;
+  }
+  if (!isWithinIsoRange(item.triggerAt, filters.startAt, filters.endAt)) {
+    return false;
+  }
+  if (!keyword) {
+    return true;
+  }
+  return (
+    item.ruleName.toLowerCase().includes(keyword) ||
+    item.pageResourceName.toLowerCase().includes(keyword) ||
+    item.promptContentSummary.toLowerCase().includes(keyword) ||
+    (item.sceneName ?? "").toLowerCase().includes(keyword)
+  );
+}
+
+function matchesJobExecutionRecordFilters(item: JobExecutionRecord, filters: JobExecutionRecordFilters) {
+  const keyword = normalizeKeyword(filters.keyword);
+  if (filters.sceneId && item.sceneId !== filters.sceneId) {
+    return false;
+  }
+  if (filters.sceneName && item.sceneName !== filters.sceneName) {
+    return false;
+  }
+  if (filters.result && filters.result !== "ALL" && item.result !== filters.result) {
+    return false;
+  }
+  if (filters.pageResourceId && item.pageResourceId !== filters.pageResourceId) {
+    return false;
+  }
+  if (filters.orgId && item.orgId !== filters.orgId) {
+    return false;
+  }
+  if (!isWithinIsoRange(item.startedAt, filters.startAt, filters.endAt)) {
+    return false;
+  }
+  if (!keyword) {
+    return true;
+  }
+  return (
+    item.sceneName.toLowerCase().includes(keyword) ||
+    item.pageResourceName.toLowerCase().includes(keyword) ||
+    item.orgName.toLowerCase().includes(keyword) ||
+    (item.failureReasonSummary ?? "").toLowerCase().includes(keyword)
+  );
 }
 
 function buildRuleEffectiveTimeValidation(
@@ -1682,6 +1760,24 @@ export const configCenterService = {
   async listExecutionLogs(): Promise<ExecutionLogItem[]> {
     await sleep(140);
     return clone(store.executionLogs);
+  },
+
+  async listPromptHitRecords(filters: PromptHitRecordFilters = {}): Promise<PromptHitRecord[]> {
+    await sleep(120);
+    return clone(
+      store.promptHitRecords
+        .filter((item) => matchesPromptHitRecordFilters(item, filters))
+        .sort((a, b) => b.triggerAt.localeCompare(a.triggerAt))
+    );
+  },
+
+  async listJobExecutionRecords(filters: JobExecutionRecordFilters = {}): Promise<JobExecutionRecord[]> {
+    await sleep(120);
+    return clone(
+      store.jobExecutionRecords
+        .filter((item) => matchesJobExecutionRecordFilters(item, filters))
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    );
   },
 
   async listFailureReasonMetrics(): Promise<FailureReasonMetric[]> {

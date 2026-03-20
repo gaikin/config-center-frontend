@@ -2,6 +2,7 @@
   BusinessFieldDefinition,
   DashboardOverview,
   ExecutionLogItem,
+  JobExecutionRecord,
   PublishAuditLog,
   PublishPendingItem,
   PublishPendingSummary,
@@ -29,6 +30,7 @@
   RuleConditionGroup,
   RuleDefinition,
   PlatformRuntimeConfig,
+  PromptHitRecord,
   SdkArtifactVersion,
   TriggerLogItem,
   UserRoleBinding
@@ -1026,6 +1028,82 @@ export const seedExecutionLogs: ExecutionLogItem[] = [
   }
 ];
 
+export const seedPromptHitRecords: PromptHitRecord[] = [
+  {
+    id: 12001,
+    ruleId: 4001,
+    ruleName: "贷款高风险强提示",
+    pageResourceId: 1001,
+    pageResourceName: "贷款申请主页面",
+    orgId: "branch-east",
+    orgName: "华东分行",
+    promptMode: "FLOATING",
+    promptContentSummary: "检测到高风险客户，请核对风险评分并补充风险说明。",
+    sceneId: 5001,
+    sceneName: "贷款申请自动查数预填",
+    triggerAt: now()
+  },
+  {
+    id: 12002,
+    ruleId: 4002,
+    ruleName: "开户信息完整性提醒",
+    pageResourceId: 1003,
+    pageResourceName: "开户办理主页面",
+    orgId: "branch-south",
+    orgName: "华南分行",
+    promptMode: "SILENT",
+    promptContentSummary: "开户用途缺失，请补录后继续办理。",
+    sceneId: 5002,
+    sceneName: "开户证件信息同步",
+    triggerAt: now()
+  }
+];
+
+export const seedJobExecutionRecords: JobExecutionRecord[] = [
+  {
+    id: 13001,
+    sceneId: 5001,
+    sceneName: "贷款申请自动查数预填",
+    pageResourceId: 1001,
+    pageResourceName: "贷款申请主页面",
+    orgId: "branch-east",
+    orgName: "华东分行",
+    triggerSource: "PROMPT_CONFIRM",
+    result: "SUCCESS",
+    failureReasonSummary: "",
+    startedAt: now(),
+    finishedAt: now()
+  },
+  {
+    id: 13002,
+    sceneId: 5002,
+    sceneName: "开户证件信息同步",
+    pageResourceId: 1003,
+    pageResourceName: "开户办理主页面",
+    orgId: "branch-south",
+    orgName: "华南分行",
+    triggerSource: "AUTO",
+    result: "FAILED",
+    failureReasonSummary: "页面元素缺失",
+    startedAt: now(),
+    finishedAt: now()
+  },
+  {
+    id: 13003,
+    sceneId: 5002,
+    sceneName: "开户证件信息同步",
+    pageResourceId: 1003,
+    pageResourceName: "开户办理主页面",
+    orgId: "branch-south",
+    orgName: "华南分行",
+    triggerSource: "MANUAL_RETRY",
+    result: "FAILED",
+    failureReasonSummary: "接口超时",
+    startedAt: now(),
+    finishedAt: now()
+  }
+];
+
 export const seedJobExecutions: JobExecutionSummary[] = [
   {
     id: 61001,
@@ -1258,6 +1336,17 @@ export const seedPermissionResources: PermissionResource[] = [
     updatedAt: now()
   },
   {
+    id: 91008,
+    resourceCode: "menu_run_records",
+    resourceName: "运行记录菜单",
+    resourceType: "MENU",
+    resourcePath: "/menu/run-records",
+    status: "ACTIVE",
+    orderNo: 65,
+    description: "导航入口：运行记录",
+    updatedAt: now()
+  },
+  {
     id: 91101,
     resourceCode: "page_dashboard_list",
     resourceName: "工作台页面",
@@ -1339,6 +1428,18 @@ export const seedPermissionResources: PermissionResource[] = [
     status: "ACTIVE",
     orderNo: 170,
     description: "页面访问：高级配置",
+    updatedAt: now()
+  },
+  {
+    id: 91108,
+    resourceCode: "page_run_records_list",
+    resourceName: "运行记录页面",
+    resourceType: "PAGE",
+    resourcePath: "/page/run-records/list",
+    pagePath: "/run-records",
+    status: "ACTIVE",
+    orderNo: 165,
+    description: "页面访问：运行记录",
     updatedAt: now()
   },
   {
@@ -1427,6 +1528,7 @@ export const seedRoleResourceGrants: RoleResourceGrant[] = [
   { id: 92004, roleId: 7001, resourceCode: "menu_jobs", createdAt: now() },
   { id: 92005, roleId: 7001, resourceCode: "menu_interfaces", createdAt: now() },
   { id: 92006, roleId: 7001, resourceCode: "menu_stats", createdAt: now() },
+  { id: 92019, roleId: 7001, resourceCode: "menu_run_records", createdAt: now() },
   { id: 92007, roleId: 7001, resourceCode: "menu_advanced", createdAt: now() },
   { id: 92008, roleId: 7001, resourceCode: "page_dashboard_list", createdAt: now() },
   { id: 92009, roleId: 7001, resourceCode: "page_page_management_list", createdAt: now() },
@@ -1434,6 +1536,7 @@ export const seedRoleResourceGrants: RoleResourceGrant[] = [
   { id: 92011, roleId: 7001, resourceCode: "page_jobs_list", createdAt: now() },
   { id: 92012, roleId: 7001, resourceCode: "page_interfaces_list", createdAt: now() },
   { id: 92013, roleId: 7001, resourceCode: "page_stats_list", createdAt: now() },
+  { id: 92020, roleId: 7001, resourceCode: "page_run_records_list", createdAt: now() },
   { id: 92014, roleId: 7001, resourceCode: "page_advanced_list", createdAt: now() },
   { id: 92015, roleId: 7001, resourceCode: "action_common_view", createdAt: now() },
   { id: 92016, roleId: 7001, resourceCode: "action_common_config", createdAt: now() },
@@ -1461,8 +1564,10 @@ export const seedRoleResourceGrants: RoleResourceGrant[] = [
 
   { id: 92301, roleId: 7004, resourceCode: "menu_dashboard", createdAt: now() },
   { id: 92302, roleId: 7004, resourceCode: "menu_stats", createdAt: now() },
+  { id: 92308, roleId: 7004, resourceCode: "menu_run_records", createdAt: now() },
   { id: 92303, roleId: 7004, resourceCode: "page_dashboard_list", createdAt: now() },
   { id: 92304, roleId: 7004, resourceCode: "page_stats_list", createdAt: now() },
+  { id: 92309, roleId: 7004, resourceCode: "page_run_records_list", createdAt: now() },
   { id: 92305, roleId: 7004, resourceCode: "action_common_view", createdAt: now() },
   { id: 92306, roleId: 7004, resourceCode: "action_common_validate", createdAt: now() },
   { id: 92307, roleId: 7004, resourceCode: "action_common_audit_view", createdAt: now() },
@@ -1473,6 +1578,7 @@ export const seedRoleResourceGrants: RoleResourceGrant[] = [
   { id: 92404, roleId: 7005, resourceCode: "menu_jobs", createdAt: now() },
   { id: 92405, roleId: 7005, resourceCode: "menu_interfaces", createdAt: now() },
   { id: 92406, roleId: 7005, resourceCode: "menu_stats", createdAt: now() },
+  { id: 92420, roleId: 7005, resourceCode: "menu_run_records", createdAt: now() },
   { id: 92407, roleId: 7005, resourceCode: "menu_advanced", createdAt: now() },
   { id: 92408, roleId: 7005, resourceCode: "page_dashboard_list", createdAt: now() },
   { id: 92409, roleId: 7005, resourceCode: "page_page_management_list", createdAt: now() },
@@ -1480,6 +1586,7 @@ export const seedRoleResourceGrants: RoleResourceGrant[] = [
   { id: 92411, roleId: 7005, resourceCode: "page_jobs_list", createdAt: now() },
   { id: 92412, roleId: 7005, resourceCode: "page_interfaces_list", createdAt: now() },
   { id: 92413, roleId: 7005, resourceCode: "page_stats_list", createdAt: now() },
+  { id: 92421, roleId: 7005, resourceCode: "page_run_records_list", createdAt: now() },
   { id: 92414, roleId: 7005, resourceCode: "page_advanced_list", createdAt: now() },
   { id: 92415, roleId: 7005, resourceCode: "action_common_view", createdAt: now() },
   { id: 92416, roleId: 7005, resourceCode: "action_common_config", createdAt: now() },

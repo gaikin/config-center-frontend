@@ -574,6 +574,56 @@ export interface ExecutionLogItem {
   createdAt: string;
 }
 
+export interface PromptHitRecord {
+  id: number;
+  ruleId: number;
+  ruleName: string;
+  pageResourceId: number;
+  pageResourceName: string;
+  orgId: string;
+  orgName: string;
+  promptMode: PromptMode;
+  promptContentSummary: string;
+  sceneId?: number;
+  sceneName?: string;
+  triggerAt: string;
+}
+
+export interface PromptHitRecordFilters {
+  keyword?: string;
+  pageResourceId?: number;
+  orgId?: string;
+  startAt?: string;
+  endAt?: string;
+  ruleId?: number;
+}
+
+export interface JobExecutionRecord {
+  id: number;
+  sceneId: number;
+  sceneName: string;
+  pageResourceId: number;
+  pageResourceName: string;
+  orgId: string;
+  orgName: string;
+  triggerSource: ExecutionLogItem["triggerSource"];
+  result: ExecutionLogItem["result"];
+  failureReasonSummary?: string;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface JobExecutionRecordFilters {
+  keyword?: string;
+  result?: ExecutionLogItem["result"] | "ALL";
+  pageResourceId?: number;
+  orgId?: string;
+  startAt?: string;
+  endAt?: string;
+  sceneId?: number;
+  sceneName?: string;
+}
+
 export interface FailureReasonMetric {
   reason: string;
   count: number;

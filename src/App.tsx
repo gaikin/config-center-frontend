@@ -24,6 +24,9 @@ const InterfacesPage = lazy(() =>
 const AuditMetricsPage = lazy(() =>
   import("./pages/AuditMetricsPage/AuditMetricsPage").then((m) => ({ default: m.AuditMetricsPage }))
 );
+const RunRecordsPage = lazy(() =>
+  import("./pages/RunRecordsPage/RunRecordsPage").then((m) => ({ default: m.RunRecordsPage }))
+);
 const AdvancedConfigPage = lazy(() =>
   import("./pages/AdvancedConfigPage/AdvancedConfigPage").then((m) => ({ default: m.AdvancedConfigPage }))
 );
@@ -48,6 +51,7 @@ export default function App() {
           <Route path="/jobs" element={<JobScenesPage />} />
           <Route path="/interfaces" element={<InterfacesPage />} />
           <Route path="/stats" element={<AuditMetricsPage />} />
+          <Route path="/run-records" element={<RunRecordsPage />} />
           <Route path="/advanced" element={<AdvancedConfigPage />} />
           <Route path="/permission-resources" element={<PermissionResourcesPage />} />
           <Route path="/sdk-version-center" element={<SdkVersionCenterPage />} />

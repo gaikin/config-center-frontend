@@ -7,8 +7,10 @@ export const HIGH_PRIVILEGE_RESOURCE_PATHS: string[] = ["/action/page-management
 const BASE_RESOURCE_PATHS: string[] = [
   "/menu/dashboard",
   "/menu/stats",
+  "/menu/run-records",
   "/page/dashboard/list",
   "/page/stats/list",
+  "/page/run-records/list",
   "/action/common/base/view"
 ];
 

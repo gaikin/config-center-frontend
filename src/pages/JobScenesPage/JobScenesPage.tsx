@@ -433,6 +433,22 @@ export function JobScenesPage() {
         label: "预览确认",
         icon: <EyeOutlined />,
         onClick: () => void openPreview(row)
+      },
+      {
+        key: "run-records",
+        label: "运行记录",
+        icon: <InfoCircleOutlined />,
+        onClick: () => {
+          const params = new URLSearchParams({
+            tab: "jobs",
+            sceneId: String(row.id),
+            sceneName: row.name
+          });
+          if (row.pageResourceId) {
+            params.set("pageResourceId", String(row.pageResourceId));
+          }
+          navigate(`/run-records?${params.toString()}`);
+        }
       }
     ];
   }
@@ -635,6 +651,17 @@ export function JobScenesPage() {
                   { label: "过期", value: "EXPIRED" }
                 ]}
               />
+              <Button
+                onClick={() => {
+                  const params = new URLSearchParams({ tab: "jobs" });
+                  if (hasPageFilter) {
+                    params.set("pageResourceId", String(pageResourceFilter));
+                  }
+                  navigate(`/run-records?${params.toString()}`);
+                }}
+              >
+                运行记录
+              </Button>
               <Button onClick={resetListFilters}>重置筛选</Button>
               <Button
                 type="primary"

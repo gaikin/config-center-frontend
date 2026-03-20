@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   BulbOutlined,
+  FileSearchOutlined,
   HomeOutlined,
   MenuOutlined,
   RobotOutlined,
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { key: "/jobs", label: "智能作业", icon: <RobotOutlined />, menuResourcePath: "/menu/jobs" },
   { key: "/interfaces", label: "API注册", icon: <ApiOutlined />, menuResourcePath: "/menu/interfaces" },
   { key: "/stats", label: "运行统计", icon: <BarChartOutlined />, menuResourcePath: "/menu/stats" },
+  { key: "/run-records", label: "运行记录", icon: <FileSearchOutlined />, menuResourcePath: "/menu/run-records" },
   { key: "/advanced", label: "高级配置", icon: <SettingOutlined />, menuResourcePath: "/menu/advanced" }
 ];
 

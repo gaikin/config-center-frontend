@@ -616,7 +616,7 @@ export function RulesPage({
   }
 
   function buildRowMenuItems(row: RuleDefinition): MenuProps["items"] {
-    return [
+    const items: MenuProps["items"] = [
       {
         key: "basic",
         label: "基础配置",
@@ -630,6 +630,25 @@ export function RulesPage({
         onClick: () => openRuleEditorTab(row, "logic")
       }
     ];
+    if (!isTemplateMode) {
+      items.push({
+        key: "run-records",
+        label: "命中记录",
+        icon: <MoreOutlined />,
+        onClick: () => {
+          const params = new URLSearchParams({
+            tab: "prompts",
+            ruleId: String(row.id),
+            ruleName: row.name
+          });
+          if (row.pageResourceId) {
+            params.set("pageResourceId", String(row.pageResourceId));
+          }
+          navigate(`/run-records?${params.toString()}`);
+        }
+      });
+    }
+    return items;
   }
 
   function resetListFilters() {

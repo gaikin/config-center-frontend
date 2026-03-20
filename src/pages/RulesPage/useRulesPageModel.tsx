@@ -58,6 +58,9 @@ type RulesPageOptions = {
   initialTemplateRuleId?: number;
   initialSceneId?: number;
   autoOpenCreate?: boolean;
+  viewerOrgId?: string;
+  viewerRoleType?: "CONFIG_OPERATOR" | "PERMISSION_ADMIN" | "TECH_SUPPORT";
+  viewerOperatorId?: string;
 };
 
 type PublishNotice = {
@@ -130,10 +133,10 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     setLoading(true);
     try {
       const [ruleData, resourceData, fieldData, sceneData, preprocessorData, interfaceData, listDataRows] = await Promise.all([
-        configCenterService.listRules(),
+        configCenterService.listRules({ viewerOrgId: options.viewerOrgId }),
         configCenterService.listPageResources(),
         configCenterService.listBusinessFields(),
-        configCenterService.listJobScenes(),
+        configCenterService.listJobScenes({ viewerOrgId: options.viewerOrgId }),
         configCenterService.listPreprocessors(),
         configCenterService.listInterfaces(),
         configCenterService.listListDatas()
@@ -609,6 +612,14 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     msgApi.success(`规则状态已切换为 ${next}`);
     await loadData();
   }
+
+  async function cloneRuleToViewerOrg(row: RuleDefinition) {
+    const targetOrgId = options.viewerOrgId ?? "branch-east";
+    const operatorId = options.viewerOperatorId ?? "person-zhao-yi";
+    await configCenterService.cloneRuleToOrg(row.id, targetOrgId, operatorId);
+    msgApi.success("已复制为我的版本");
+    await loadData();
+  }
   async function openLogic(row: RuleDefinition) {
     setCurrentRule(row);
     setLogicValidationIssues([]);
@@ -1013,7 +1024,8 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     dismissPublishNotice: () => setPublishNotice(null),
     publishNoticeNow,
     publishRuleNow,
-    restoreRuleNow
+    restoreRuleNow,
+    cloneRuleToViewerOrg
   };
 }
 

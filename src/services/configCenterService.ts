@@ -36,6 +36,7 @@ import {
   validateMenuSdkPolicy,
   validatePlatformRuntimeConfig
 } from "../sdkGovernance";
+import { canAccessSharedObject } from "../sharedAccess";
 import type {
   ApiInputParam,
   ApiOutputParam,
@@ -73,6 +74,7 @@ import type {
   RoleResourceGrant,
   RuleDefinition,
   SaveDraftResult,
+  ShareConfigFields,
   SdkArtifactVersion,
   PromptHitRecord,
   PromptHitRecordFilters,
@@ -105,6 +107,10 @@ type PublishEffectiveOptions = {
   effectiveStartAt?: string;
   effectiveEndAt?: string;
 };
+type SharedViewerOptions = {
+  viewerOrgId?: string;
+};
+type ShareConfigUpdatePayload = Pick<ShareConfigFields, "shareMode" | "sharedOrgIds">;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
@@ -168,6 +174,51 @@ function normalizeStringList(values: string[] | undefined) {
         .map((item) => item.trim())
         .filter(Boolean)
     )
+  );
+}
+
+function normalizeShareMode(shareMode: RuleDefinition["shareMode"] | JobSceneDefinition["shareMode"]) {
+  return shareMode === "SHARED" ? "SHARED" : "PRIVATE";
+}
+
+function normalizeSharedOrgIds(sharedOrgIds: string[] | undefined) {
+  return normalizeStringList(sharedOrgIds);
+}
+
+function normalizeSharedRule(rule: RuleDefinition): RuleDefinition {
+  return {
+    ...rule,
+    shareMode: normalizeShareMode(rule.shareMode),
+    sharedOrgIds: normalizeSharedOrgIds(rule.sharedOrgIds)
+  };
+}
+
+function normalizeSharedScene(scene: JobSceneDefinition): JobSceneDefinition {
+  return {
+    ...scene,
+    shareMode: normalizeShareMode(scene.shareMode),
+    sharedOrgIds: normalizeSharedOrgIds(scene.sharedOrgIds),
+    ownerOrgId: scene.ownerOrgId ?? "branch-east"
+  };
+}
+
+function isVisibleToViewer(
+  target: { ownerOrgId: string; shareMode?: RuleDefinition["shareMode"]; sharedOrgIds?: string[] },
+  viewerOrgId?: string
+) {
+  if (!viewerOrgId) {
+    return true;
+  }
+  return canAccessSharedObject(
+    {
+      ownerOrgId: target.ownerOrgId,
+      shareMode: normalizeShareMode(target.shareMode),
+      sharedOrgIds: normalizeSharedOrgIds(target.sharedOrgIds)
+    },
+    {
+      orgScopeId: viewerOrgId,
+      roleType: "CONFIG_OPERATOR"
+    }
   );
 }
 
@@ -1256,9 +1307,12 @@ export const configCenterService = {
     }
   },
 
-  async listRules(): Promise<RuleDefinition[]> {
+  async listRules(options: SharedViewerOptions = {}): Promise<RuleDefinition[]> {
     await sleep(150);
-    return clone(store.rules);
+    const rows = store.rules
+      .map((rule) => normalizeSharedRule(rule))
+      .filter((rule) => isVisibleToViewer(rule, options.viewerOrgId));
+    return clone(rows);
   },
 
   async createRule(payload: RuleCreatePayload): Promise<RuleDefinition> {
@@ -1273,6 +1327,8 @@ export const configCenterService = {
     const created: RuleDefinition = {
       ...payload,
       listLookupConditions: clone(payload.listLookupConditions ?? []),
+      shareMode: normalizeShareMode(payload.shareMode),
+      sharedOrgIds: normalizeSharedOrgIds(payload.sharedOrgIds),
       id: nextId(store.rules),
       currentVersion: payload.currentVersion ?? 1,
       updatedAt: nowIso()
@@ -1297,6 +1353,8 @@ export const configCenterService = {
     const next: RuleDefinition = {
       ...payload,
       listLookupConditions: clone(payload.listLookupConditions ?? exists?.listLookupConditions ?? []),
+      shareMode: normalizeShareMode(payload.shareMode ?? exists?.shareMode),
+      sharedOrgIds: normalizeSharedOrgIds(payload.sharedOrgIds ?? exists?.sharedOrgIds),
       updatedAt: payload.updatedAt ?? nowIso()
     };
 
@@ -1345,6 +1403,55 @@ export const configCenterService = {
     }
   },
 
+  async updateRuleShareConfig(
+    ruleId: number,
+    payload: ShareConfigUpdatePayload,
+    operator = "person-zhao-yi"
+  ): Promise<RuleDefinition> {
+    await sleep(140);
+    const exists = store.rules.find((item) => item.id === ruleId);
+    if (!exists) {
+      throw new Error("Rule does not exist; cannot update share config.");
+    }
+    const shareMode = normalizeShareMode(payload.shareMode);
+    const sharedOrgIds = shareMode === "PRIVATE" ? [] : normalizeSharedOrgIds(payload.sharedOrgIds);
+    const next: RuleDefinition = {
+      ...exists,
+      shareMode,
+      sharedOrgIds,
+      sharedBy: operator,
+      sharedAt: nowIso(),
+      updatedAt: nowIso()
+    };
+    store.rules = store.rules.map((item) => (item.id === ruleId ? next : item));
+    return clone(next);
+  },
+
+  async cloneRuleToOrg(ruleId: number, targetOrgId: string, operator = "person-zhao-yi"): Promise<RuleDefinition> {
+    await sleep(160);
+    const source = store.rules.find((item) => item.id === ruleId);
+    if (!source) {
+      throw new Error("Rule does not exist; cannot clone.");
+    }
+    const cloned: RuleDefinition = {
+      ...source,
+      id: nextId(store.rules),
+      name: `${source.name}-副本`,
+      ownerOrgId: targetOrgId,
+      shareMode: "PRIVATE",
+      sharedOrgIds: [],
+      sharedBy: operator,
+      sharedAt: nowIso(),
+      sourceRuleId: source.id,
+      sourceRuleName: source.name,
+      status: "DRAFT",
+      currentVersion: 1,
+      updatedAt: nowIso()
+    };
+    store.rules = [cloned, ...store.rules];
+    return clone(cloned);
+  },
+
   async previewRule(ruleId: number): Promise<{ ruleId: number; previewOnly: true; matched: boolean; detail: string }> {
     await sleep(200);
     const rule = store.rules.find((item) => item.id === ruleId);
@@ -1358,9 +1465,21 @@ export const configCenterService = {
     };
   },
 
-  async listJobScenes(): Promise<JobSceneDefinition[]> {
+  async listJobScenes(options: SharedViewerOptions = {}): Promise<JobSceneDefinition[]> {
     await sleep(150);
-    return clone(store.scenes);
+    const rows = store.scenes
+      .map((scene) => normalizeSharedScene(scene))
+      .filter((scene) =>
+        isVisibleToViewer(
+          {
+            ownerOrgId: scene.ownerOrgId ?? "branch-east",
+            shareMode: scene.shareMode,
+            sharedOrgIds: scene.sharedOrgIds
+          },
+          options.viewerOrgId
+        )
+      );
+    return clone(rows);
   },
 
   async upsertJobScene(payload: Omit<JobSceneDefinition, "updatedAt"> & { updatedAt?: string }): Promise<JobSceneDefinition> {
@@ -1368,6 +1487,9 @@ export const configCenterService = {
     const exists = store.scenes.find((item) => item.id === payload.id);
     const next: JobSceneDefinition = {
       ...payload,
+      ownerOrgId: payload.ownerOrgId ?? exists?.ownerOrgId ?? "branch-east",
+      shareMode: normalizeShareMode(payload.shareMode ?? exists?.shareMode),
+      sharedOrgIds: normalizeSharedOrgIds(payload.sharedOrgIds ?? exists?.sharedOrgIds),
       updatedAt: payload.updatedAt ?? nowIso()
     };
     if (exists && exists.status === "ACTIVE") {
@@ -1415,6 +1537,61 @@ export const configCenterService = {
     if (row) {
       appendAuditLog(status === "DISABLED" ? "DISABLE" : "PUBLISH", "JOB_SCENE", row.name, "system", row.id);
     }
+  },
+
+  async updateJobSceneShareConfig(
+    sceneId: number,
+    payload: ShareConfigUpdatePayload,
+    operator = "person-zhao-yi"
+  ): Promise<JobSceneDefinition> {
+    await sleep(140);
+    const exists = store.scenes.find((item) => item.id === sceneId);
+    if (!exists) {
+      throw new Error("Scene does not exist; cannot update share config.");
+    }
+    const shareMode = normalizeShareMode(payload.shareMode);
+    const sharedOrgIds = shareMode === "PRIVATE" ? [] : normalizeSharedOrgIds(payload.sharedOrgIds);
+    const next: JobSceneDefinition = {
+      ...exists,
+      ownerOrgId: exists.ownerOrgId ?? "branch-east",
+      shareMode,
+      sharedOrgIds,
+      sharedBy: operator,
+      sharedAt: nowIso(),
+      updatedAt: nowIso()
+    };
+    store.scenes = store.scenes.map((item) => (item.id === sceneId ? next : item));
+    return clone(next);
+  },
+
+  async cloneJobSceneToOrg(
+    sceneId: number,
+    targetOrgId: string,
+    operator = "person-zhao-yi"
+  ): Promise<JobSceneDefinition> {
+    await sleep(160);
+    const source = store.scenes.find((item) => item.id === sceneId);
+    if (!source) {
+      throw new Error("Scene does not exist; cannot clone.");
+    }
+    const cloned: JobSceneDefinition = {
+      ...source,
+      id: nextId(store.scenes),
+      name: `${source.name}-副本`,
+      ownerOrgId: targetOrgId,
+      shareMode: "PRIVATE",
+      sharedOrgIds: [],
+      sharedBy: operator,
+      sharedAt: nowIso(),
+      sourceSceneId: source.id,
+      sourceSceneName: source.name,
+      status: "DRAFT",
+      currentVersion: 1,
+      riskConfirmed: false,
+      updatedAt: nowIso()
+    };
+    store.scenes = [cloned, ...store.scenes];
+    return clone(cloned);
   },
 
   async confirmJobSceneRisk(id: number): Promise<void> {

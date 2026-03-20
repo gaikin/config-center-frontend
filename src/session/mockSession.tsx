@@ -25,6 +25,8 @@ export type MockUserPersonaMeta = {
   deprecated?: boolean;
 };
 
+export type MockViewerContext = Pick<MockUserPersonaMeta, "orgScopeId" | "roleType" | "operatorId">;
+
 function buildPersonaResourcePaths(roleType: RoleItem["roleType"], orgScopeId: string) {
   return getRoleTypeRecommendedResourcePaths(roleType, orgScopeId);
 }
@@ -220,4 +222,8 @@ export function useMockSession() {
     meta,
     hasResource
   };
+}
+
+export function getMockPersonaMeta(persona: MockUserPersona): MockUserPersonaMeta {
+  return mockUserPersonaMetaMap[persona];
 }

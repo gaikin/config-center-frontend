@@ -34,7 +34,7 @@ import { PublishContinuationAlert } from "../../components/PublishContinuationAl
 import { ValidationReportPanel } from "../../components/ValidationReportPanel";
 import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlockedMessage, getPublishValidationByResource } from "../../effectiveFlow";
 import { lifecycleLabelMap } from "../../enumLabels";
-import { orgOptions } from "../../orgOptions";
+import { getOrgLabel, orgOptions } from "../../orgOptions";
 import { useMockSession } from "../../session/mockSession";
 import { NodeLibraryPanel } from "./NodeLibraryPanel";
 import { readNodeTypeFromDragData } from "./nodeLibraryDnD";
@@ -110,6 +110,7 @@ const ActionBar = styled.div`
 
 export function JobScenesPage() {
   const navigate = useNavigate();
+  const { hasResource, meta } = useMockSession();
   const [keyword, setKeyword] = useState("");
   const {
     holder,
@@ -176,9 +177,12 @@ export function JobScenesPage() {
     publishNotice,
     dismissPublishNotice,
     publishSceneNow,
-    restoreSceneNow
-  } = useJobScenesPageModel();
-  const { hasResource } = useMockSession();
+    restoreSceneNow,
+    cloneSceneToViewerOrg
+  } = useJobScenesPageModel({
+    viewerOrgId: meta.orgScopeId,
+    viewerOperatorId: meta.operatorId
+  });
   const [msgApi, msgHolder] = message.useMessage();
   const [effectiveTarget, setEffectiveTarget] = useState<EffectiveTarget | null>(null);
   const [effectiveLoading, setEffectiveLoading] = useState(false);
@@ -217,6 +221,20 @@ export function JobScenesPage() {
   )
     ? executionModeParam
     : undefined;
+  const isReadonlySharedScene = (row: JobSceneDefinition) =>
+    row.shareMode === "SHARED" && row.ownerOrgId !== meta.orgScopeId;
+  const editingReadonlyShared = Boolean(editing && isReadonlySharedScene(editing));
+  const builderReadonlyShared = Boolean(builderScene && isReadonlySharedScene(builderScene));
+  const getShareScopeLabel = (row: JobSceneDefinition) => {
+    if (row.shareMode !== "SHARED") {
+      return "仅自己";
+    }
+    const scopeOrgIds = row.sharedOrgIds ?? [];
+    if (scopeOrgIds.length === 0) {
+      return "全部机构";
+    }
+    return scopeOrgIds.map((orgId) => getOrgLabel(orgId)).join("、");
+  };
 
   useEffect(() => {
     if (!hasPageFilter || quickAction !== "create" || autoOpenCreateRef.current) {
@@ -287,10 +305,14 @@ export function JobScenesPage() {
         ...item,
         data: {
           ...item.data,
-          onDelete: () => void removeFlowNode(item.id)
+          onDelete: () => {
+            if (!builderReadonlyShared) {
+              void removeFlowNode(item.id);
+            }
+          }
         }
       })),
-    [flowNodes, removeFlowNode]
+    [builderReadonlyShared, flowNodes, removeFlowNode]
   );
   const apiInputTabItems = useMemo(() => {
     const tabOrder = [
@@ -621,6 +643,14 @@ export function JobScenesPage() {
         </Space>
       </SceneTypeCard>
 
+      <Alert
+        showIcon
+        type="info"
+        style={{ marginBottom: 12 }}
+        message="共享状态说明"
+        description="共享对象仅可查看；如需调整，请使用“复制为我的版本”。"
+      />
+
       <ToolbarCard>
         <Row gutter={[10, 10]} align="middle">
           <Col xs={24} lg={9}>
@@ -737,11 +767,42 @@ export function JobScenesPage() {
             { title: "人工基准(秒)", dataIndex: "manualDurationSec", width: 120 },
             { title: "状态", width: 100, render: (_, row) => <Tag color={statusColor[row.status]}>{lifecycleLabelMap[row.status]}</Tag> },
             {
+              title: "共享状态",
+              width: 110,
+              render: (_, row) =>
+                row.shareMode === "SHARED" ? <Tag color="processing">已共享</Tag> : <Tag>私有</Tag>
+            },
+            {
+              title: "共享范围",
+              width: 180,
+              render: (_, row) => (
+                <Typography.Text type={row.shareMode === "SHARED" ? undefined : "secondary"}>
+                  {getShareScopeLabel(row)}
+                </Typography.Text>
+              )
+            },
+            {
               title: "操作",
-              width: 300,
+              width: 340,
               render: (_, row) => {
+                const readonlyShared = isReadonlySharedScene(row);
                 const actionMeta = getEffectiveActionMeta(row.status);
                 const actionBlocked = getEffectivePermissionBlockedMessage(actionMeta.type, hasResource);
+                if (readonlyShared) {
+                  return (
+                    <Space wrap>
+                      <Button size="small" type="primary" icon={<PartitionOutlined />} onClick={() => void openBuilder(row)}>
+                        作业编排
+                      </Button>
+                      <Button size="small" onClick={() => openEdit(row)}>
+                        查看
+                      </Button>
+                      <Button size="small" onClick={() => void cloneSceneToViewerOrg(row)}>
+                        复制为我的版本
+                      </Button>
+                    </Space>
+                  );
+                }
                 return (
                   <Space wrap>
                     <Button size="small" type="primary" icon={<PartitionOutlined />} onClick={() => void openBuilder(row)}>
@@ -779,8 +840,35 @@ export function JobScenesPage() {
         />
       </Card>
 
-      <Modal title={editing ? "编辑场景" : "新建场景"} open={open} onCancel={closeSceneModal} onOk={() => void submitScene()} width={680}>
-        <Form form={form} layout="vertical">
+      <Modal
+        title={editing ? "编辑场景" : "新建场景"}
+        open={open}
+        onCancel={closeSceneModal}
+        onOk={editingReadonlyShared ? undefined : () => void submitScene()}
+        width={680}
+        footer={
+          editingReadonlyShared
+            ? [
+                <Button key="close" onClick={closeSceneModal}>
+                  关闭
+                </Button>,
+                <Button key="clone" type="primary" onClick={() => editing && void cloneSceneToViewerOrg(editing)}>
+                  复制为我的版本
+                </Button>
+              ]
+            : undefined
+        }
+      >
+        <Form form={form} layout="vertical" disabled={editingReadonlyShared}>
+          {editingReadonlyShared ? (
+            <Alert
+              showIcon
+              type="info"
+              style={{ marginBottom: 12 }}
+              message="当前对象来自共享，仅可查看"
+              description="如需修改，请复制为我的版本后在副本中编辑。"
+            />
+          ) : null}
           <Space size={8} wrap style={{ marginBottom: 12 }}>
             <Tag color="processing">保存即草稿</Tag>
             <Tag color="processing">节点数自动统计</Tag>
@@ -948,21 +1036,39 @@ export function JobScenesPage() {
             <Button size="small" disabled={!builderScene} onClick={() => (builderScene ? void openPreview(builderScene) : undefined)}>
               打开预览确认
             </Button>
-            <Button onClick={autoLayoutNodes}>自动排版</Button>
-            <Button loading={savingFlow} onClick={() => void saveFlowLayout()}>保存编排</Button>
+            <Button onClick={autoLayoutNodes} disabled={builderReadonlyShared}>自动排版</Button>
+            <Button loading={savingFlow} onClick={() => void saveFlowLayout()} disabled={builderReadonlyShared}>保存编排</Button>
           </Space>
         }
       >
         <Space direction="vertical" style={{ width: "100%" }} size={12}>
+          {builderReadonlyShared ? (
+            <Alert
+              showIcon
+              type="info"
+              message="当前对象来自共享，仅可查看"
+              description="画布与节点属性均为只读；如需修改请复制为我的版本。"
+            />
+          ) : null}
           <Card title="节点编排区" size="small">
             <div style={{ display: "flex", gap: 12, alignItems: "stretch", overflowX: "auto", position: "relative" }}>
               <Card title="节点库" style={{ flex: "0 0 220px" }}>
                 <NodeLibraryPanel
                   items={nodeLibrary}
                   selectedNodeType={selectedLibraryNodeType}
-                  disabledNodeTypes={listDatas.length === 0 ? ["list_lookup"] : []}
+                  disabledNodeTypes={
+                    builderReadonlyShared
+                      ? nodeLibrary.map((item) => item.nodeType)
+                      : listDatas.length === 0
+                        ? ["list_lookup"]
+                        : []
+                  }
                   onSelect={previewLibraryNode}
-                  onAdd={(nodeType) => void addNodeFromLibrary(nodeType)}
+                  onAdd={(nodeType) => {
+                    if (!builderReadonlyShared) {
+                      void addNodeFromLibrary(nodeType);
+                    }
+                  }}
                 />
                 {listDatas.length === 0 ? (
                   <Alert
@@ -993,21 +1099,24 @@ export function JobScenesPage() {
                     border: canvasDragOver ? "1px dashed #1677ff" : "1px solid #f0f0f0",
                     borderRadius: 8
                   }}
-                  onDragOver={handleFlowDragOver}
-                  onDragLeave={() => setCanvasDragOver(false)}
-                  onDrop={handleFlowDrop}
+                  onDragOver={builderReadonlyShared ? undefined : handleFlowDragOver}
+                  onDragLeave={builderReadonlyShared ? undefined : () => setCanvasDragOver(false)}
+                  onDrop={builderReadonlyShared ? undefined : handleFlowDrop}
                 >
                   <ReactFlowProvider>
                     <ReactFlow<FlowNode, FlowEdge>
                       nodes={flowNodesWithActions}
                       edges={flowEdges}
                       nodeTypes={nodeTypes}
-                      onNodesChange={onFlowNodesChange}
-                      onEdgesChange={onFlowEdgesChange}
-                      onConnect={onConnect}
+                      onNodesChange={builderReadonlyShared ? undefined : onFlowNodesChange}
+                      onEdgesChange={builderReadonlyShared ? undefined : onFlowEdgesChange}
+                      onConnect={builderReadonlyShared ? undefined : onConnect}
                       onInit={(instance) => setReactFlowInstance(instance)}
                       onNodeClick={(_, node) => void selectFlowNode(node.id)}
                       onPaneClick={() => void selectFlowNode(null)}
+                      nodesDraggable={!builderReadonlyShared}
+                      nodesConnectable={!builderReadonlyShared}
+                      elementsSelectable
                       minZoom={0.15}
                       fitView={flowNodesWithActions.length > 0}
                       fitViewOptions={{ padding: 0.1, minZoom: 0.15, maxZoom: 1.2 }}
@@ -1038,7 +1147,7 @@ export function JobScenesPage() {
                   }}
                 >
                   <ValidationReportPanel issues={nodeValidationIssues} title="节点属性还有待处理问题" />
-                  <Form form={nodeDetailForm} layout="vertical">
+                  <Form form={nodeDetailForm} layout="vertical" disabled={builderReadonlyShared}>
                       <Form.Item name="name" label="节点名称" rules={[{ required: true, message: "请输入节点名称" }]}>
                         <Input placeholder="请输入节点名称" />
                       </Form.Item>

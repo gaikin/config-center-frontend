@@ -53,6 +53,11 @@ const DEFAULT_FLOATING_BUTTON_LABEL = "重新执行";
 const DEFAULT_FLOATING_BUTTON_X = 86;
 const DEFAULT_FLOATING_BUTTON_Y = 78;
 
+type JobScenesPageModelOptions = {
+  viewerOrgId?: string;
+  viewerOperatorId?: string;
+};
+
 function toSceneDraftPayload(row: JobSceneDefinition): Omit<JobSceneDefinition, "updatedAt"> & { updatedAt?: string } {
   return {
     ...row,
@@ -60,7 +65,7 @@ function toSceneDraftPayload(row: JobSceneDefinition): Omit<JobSceneDefinition, 
   };
 }
 
-export function useJobScenesPageModel() {
+export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
   const screens = Grid.useBreakpoint();
   const drawerWidth = getRightOverlayDrawerWidth(Boolean(screens.lg));
 
@@ -182,9 +187,9 @@ export function useJobScenesPageModel() {
     setLoading(true);
     try {
       const [sceneData, resourceData, ruleData, interfaceRows, listDataRows] = await Promise.all([
-        configCenterService.listJobScenes(),
+        configCenterService.listJobScenes({ viewerOrgId: options.viewerOrgId }),
         configCenterService.listPageResources(),
-        configCenterService.listRules(),
+        configCenterService.listRules({ viewerOrgId: options.viewerOrgId }),
         configCenterService.listInterfaces(),
         configCenterService.listListDatas()
       ]);
@@ -498,6 +503,14 @@ export function useJobScenesPageModel() {
   async function confirmRisk(item: JobSceneDefinition) {
     await configCenterService.confirmJobSceneRisk(item.id);
     msgApi.success(`风险已确认: ${item.name}`);
+    await loadData();
+  }
+
+  async function cloneSceneToViewerOrg(row: JobSceneDefinition) {
+    const targetOrgId = options.viewerOrgId ?? "branch-east";
+    const operatorId = options.viewerOperatorId ?? "person-zhao-yi";
+    await configCenterService.cloneJobSceneToOrg(row.id, targetOrgId, operatorId);
+    msgApi.success("已复制为我的版本");
     await loadData();
   }
 
@@ -1181,6 +1194,7 @@ export function useJobScenesPageModel() {
     dismissPublishNotice: () => setPublishNotice(null),
     publishNoticeNow,
     publishSceneNow,
-    restoreSceneNow
+    restoreSceneNow,
+    cloneSceneToViewerOrg
   };
 }

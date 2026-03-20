@@ -263,6 +263,7 @@ export function RulesPage({
   initialSceneId,
   autoOpenCreate
 }: RulesPageProps) {
+  const { hasResource, meta } = useMockSession();
   const {
     holder,
     loading,
@@ -313,10 +314,18 @@ export function RulesPage({
     publishNotice,
     dismissPublishNotice,
     publishRuleNow,
-    restoreRuleNow
-  } = useRulesPageModel(mode, { initialPageResourceId, initialTemplateRuleId, initialSceneId, autoOpenCreate });
+    restoreRuleNow,
+    cloneRuleToViewerOrg
+  } = useRulesPageModel(mode, {
+    initialPageResourceId,
+    initialTemplateRuleId,
+    initialSceneId,
+    autoOpenCreate,
+    viewerOrgId: meta.orgScopeId,
+    viewerRoleType: meta.roleType,
+    viewerOperatorId: meta.operatorId
+  });
   const navigate = useNavigate();
-  const { hasResource } = useMockSession();
   const [msgApi, msgHolder] = message.useMessage();
   const isTemplateMode = mode === "TEMPLATE";
   const pageTitle = isTemplateMode ? "模板复用" : "智能提示";
@@ -473,6 +482,19 @@ export function RulesPage({
   const saveBlockingCount = saveValidationReport?.blockingCount ?? 0;
   const saveWarningCount = saveValidationReport?.warningCount ?? 0;
   const hasSaveIssues = saveBlockingCount + saveWarningCount > 0;
+  const isReadonlySharedRule = (row: RuleDefinition) =>
+    row.shareMode === "SHARED" && row.ownerOrgId !== meta.orgScopeId;
+  const editingReadonlyShared = Boolean(editing && isReadonlySharedRule(editing));
+  const getShareScopeLabel = (row: RuleDefinition) => {
+    if (row.shareMode !== "SHARED") {
+      return "仅自己";
+    }
+    const scopeOrgIds = row.sharedOrgIds ?? [];
+    if (scopeOrgIds.length === 0) {
+      return "全部机构";
+    }
+    return scopeOrgIds.map((orgId) => getOrgLabel(orgId)).join("、");
+  };
 
   function updateListMatchers(
     updater:
@@ -1416,6 +1438,14 @@ export function RulesPage({
         </Row>
       ) : null}
 
+      <Alert
+        showIcon
+        type="info"
+        style={{ marginBottom: 12 }}
+        message="共享状态说明"
+        description="共享对象仅可查看；如需调整，请使用“复制为我的版本”。"
+      />
+
       <ToolbarCard>
         <Row gutter={[10, 10]} align="middle">
           <Col xs={24} lg={10}>
@@ -1501,11 +1531,39 @@ export function RulesPage({
               render: (_, row) => <Tag color={statusColor[row.status]}>{lifecycleLabelMap[row.status]}</Tag>
             },
             {
+              title: "共享状态",
+              width: 110,
+              render: (_, row) =>
+                row.shareMode === "SHARED" ? <Tag color="processing">已共享</Tag> : <Tag>私有</Tag>
+            },
+            {
+              title: "共享范围",
+              width: 180,
+              render: (_, row) => (
+                <Typography.Text type={row.shareMode === "SHARED" ? undefined : "secondary"}>
+                  {getShareScopeLabel(row)}
+                </Typography.Text>
+              )
+            },
+            {
               title: "操作",
-              width: 250,
+              width: 320,
               render: (_, row) => {
+                const readonlyShared = isReadonlySharedRule(row);
                 const actionMeta = getEffectiveActionMeta(row.status);
                 const actionBlocked = getEffectivePermissionBlockedMessage(actionMeta.type, hasResource);
+                if (readonlyShared) {
+                  return (
+                    <Space>
+                      <Button size="small" onClick={() => openRuleEditorTab(row, "basic")}>
+                        查看
+                      </Button>
+                      <Button size="small" onClick={() => void cloneRuleToViewerOrg(row)}>
+                        复制为我的版本
+                      </Button>
+                    </Space>
+                  );
+                }
                 return (
                   <Space>
                     <Button size="small" onClick={() => openRuleEditorTab(row, "basic")}>
@@ -1547,10 +1605,20 @@ export function RulesPage({
         width={isTemplateMode ? 720 : 1240}
         footer={null}
       >
-        <Form form={ruleForm} layout="vertical">
+        <Form form={ruleForm} layout="vertical" disabled={editingReadonlyShared}>
           <Form.Item hidden name="ruleScope">
             <Input />
           </Form.Item>
+
+          {editingReadonlyShared ? (
+            <Alert
+              showIcon
+              type="info"
+              style={{ marginBottom: 12 }}
+              message="当前对象来自共享，仅可查看"
+              description="如需修改，请使用“复制为我的版本”后在副本中编辑。"
+            />
+          ) : null}
 
           <EditorStatusBar size="small">
             <Space align="center" size={[8, 8]} wrap style={{ width: "100%", justifyContent: "space-between" }}>
@@ -1836,9 +1904,14 @@ export function RulesPage({
                         editing ? (
                           <Space>
                             <Tooltip title="新增条件">
-                              <Button icon={<PlusOutlined />} onClick={addCondition} />
+                              <Button icon={<PlusOutlined />} onClick={addCondition} disabled={editingReadonlyShared} />
                             </Tooltip>
-                            <Button type="primary" loading={savingQuery} onClick={() => void saveConditionLogic()}>
+                            <Button
+                              type="primary"
+                              loading={savingQuery}
+                              onClick={() => void saveConditionLogic()}
+                              disabled={editingReadonlyShared}
+                            >
                               保存条件逻辑
                             </Button>
                           </Space>
@@ -1865,14 +1938,21 @@ export function RulesPage({
               </Space>
               <Space>
                 <Button onClick={closeRuleModal}>取消</Button>
-                {!isTemplateMode ? (
+                {!isTemplateMode && !editingReadonlyShared ? (
                   <Button loading={previewLoading} onClick={() => void runWizardPreview()}>
                     执行预览
                   </Button>
                 ) : null}
-                <Button type="primary" onClick={() => void submitRule()}>
-                  {isTemplateMode ? "保存" : "保存规则"}
-                </Button>
+                {!editingReadonlyShared ? (
+                  <Button type="primary" onClick={() => void submitRule()}>
+                    {isTemplateMode ? "保存" : "保存规则"}
+                  </Button>
+                ) : null}
+                {editingReadonlyShared ? (
+                  <Button type="primary" onClick={() => editing && void cloneRuleToViewerOrg(editing)}>
+                    复制为我的版本
+                  </Button>
+                ) : null}
               </Space>
             </Space>
           </StickyEditorFooter>

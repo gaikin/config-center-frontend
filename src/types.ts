@@ -15,6 +15,14 @@ export type RuleOperator = "EQ" | "NE" | "GT" | "GE" | "LT" | "LE" | "CONTAINS" 
 export type RuleOperandValueType = "STRING" | "NUMBER" | "BOOLEAN" | "OBJECT" | "ARRAY";
 export type ListDataBuildStatus = "PENDING" | "BUILDING" | "READY" | "FAILED";
 export type ListLookupJudgement = "MATCHED" | "NOT_MATCHED";
+export type ShareMode = "PRIVATE" | "SHARED";
+
+export interface ShareConfigFields {
+  shareMode: ShareMode;
+  sharedOrgIds: string[];
+  sharedBy?: string;
+  sharedAt?: string;
+}
 
 export interface PageSite {
   id: number;
@@ -200,6 +208,10 @@ export interface RuleDefinition {
   pageResourceName?: string;
   sourceRuleId?: number;
   sourceRuleName?: string;
+  shareMode?: ShareMode;
+  sharedOrgIds?: string[];
+  sharedBy?: string;
+  sharedAt?: string;
   priority: number;
   promptMode: PromptMode;
   closeMode: PromptCloseMode;
@@ -294,6 +306,13 @@ export type JobNodeType = "page_get" | "api_call" | "list_lookup" | "js_script" 
 export interface JobSceneDefinition {
   id: number;
   name: string;
+  ownerOrgId?: string;
+  shareMode?: ShareMode;
+  sharedOrgIds?: string[];
+  sharedBy?: string;
+  sharedAt?: string;
+  sourceSceneId?: number;
+  sourceSceneName?: string;
   pageResourceId: number;
   pageResourceName: string;
   executionMode: ExecutionMode;

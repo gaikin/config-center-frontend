@@ -36,10 +36,6 @@ const PermissionResourcesPage = lazy(() =>
 const SdkVersionCenterPage = lazy(() =>
   import("./pages/SdkVersionCenterPage/SdkVersionCenterPage").then((m) => ({ default: m.SdkVersionCenterPage }))
 );
-const LoginTestPage = lazy(() =>
-  import("./pages/LoginTestPage/LoginTestPage").then((m) => ({ default: m.LoginTestPage }))
-);
-
 export default function App() {
   return (
     <AppShell>
@@ -55,7 +51,6 @@ export default function App() {
           <Route path="/advanced" element={<AdvancedConfigPage />} />
           <Route path="/permission-resources" element={<PermissionResourcesPage />} />
           <Route path="/sdk-version-center" element={<SdkVersionCenterPage />} />
-          <Route path="/login-test" element={<LoginTestPage />} />
 
           <Route path="/page-resources" element={<PageResourcesPage />} />
           <Route path="/page-activation" element={<Navigate to="/page-management" replace />} />

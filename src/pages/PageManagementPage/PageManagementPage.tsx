@@ -96,6 +96,13 @@ const capabilityStatusMeta: Record<CapabilityOpenStatus, { label: string; color:
   PENDING: { label: "申请中", color: "gold" }
 };
 
+const pageManagementSummaryAccents = {
+  total: "linear-gradient(90deg, #1677ff 0%, #4c9dff 100%)",
+  ready: "linear-gradient(90deg, #2f9e44 0%, #5ab86b 100%)",
+  needRequest: "linear-gradient(90deg, #d46b08 0%, #f59e0b 100%)",
+  filtered: "linear-gradient(90deg, #64748b 0%, #94a3b8 100%)"
+} as const;
+
 const PageHeader = styled.div`
   margin-bottom: var(--space-16);
 `;
@@ -127,7 +134,7 @@ const FilterActions = styled(Space)`
 const FilterLabel = styled(Typography.Text)`
   display: block;
   margin-bottom: 6px;
-  color: #475467;
+  color: var(--color-text-secondary);
 `;
 
 const MenuListCard = styled(Card)`
@@ -738,7 +745,7 @@ export function PageManagementPage() {
       {holder}
       <PageHeader>
         <Typography.Title level={4}>菜单管理</Typography.Title>
-        <Typography.Text style={{ color: "#475467" }}>
+        <Typography.Text style={{ color: "var(--color-text-secondary)" }}>
           以菜单为入口查看能力开通状态、页面配置覆盖率和下一步动作，减少在多个页面之间切换。
         </Typography.Text>
       </PageHeader>
@@ -754,22 +761,22 @@ export function PageManagementPage() {
 
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
+          <SummaryCard $accent={pageManagementSummaryAccents.total}>
             <Statistic title="菜单总数" value={menuRows.length} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
+          <SummaryCard $accent={pageManagementSummaryAccents.ready}>
             <Statistic title="能力已开通" value={readyMenus} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
+          <SummaryCard $accent={pageManagementSummaryAccents.needRequest}>
             <Statistic title="待开通菜单" value={needRequestMenus} />
           </SummaryCard>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #4f5f72 0%, #738396 100%)">
+          <SummaryCard $accent={pageManagementSummaryAccents.filtered}>
             <Statistic title="筛选结果" value={filteredMenuRows.length} />
           </SummaryCard>
         </Col>
@@ -874,7 +881,7 @@ export function PageManagementPage() {
                           </div>
                           <div>
                             <Typography.Text type="secondary">作业覆盖 {row.configuredJobPages}/{row.pageCount}</Typography.Text>
-                            <Progress percent={jobCoverage} size="small" showInfo={false} strokeColor="#0c7a43" />
+                            <Progress percent={jobCoverage} size="small" showInfo={false} strokeColor="#2f9e44" />
                           </div>
                         </div>
                       </Space>
@@ -949,7 +956,7 @@ export function PageManagementPage() {
                         智能提示：{capabilityStatusMeta[selectedMenu.promptStatus].label}
                       </Tag>
                       <Tag color={capabilityStatusMeta[selectedMenu.jobStatus].color}>
-                        智能作业：{capabilityStatusMeta[selectedMenu.jobStatus].label}
+                        作业编排：{capabilityStatusMeta[selectedMenu.jobStatus].label}
                       </Tag>
                       <Tag>菜单页面 {selectedMenu.pageCount}</Tag>
                     </Space>
@@ -1067,7 +1074,7 @@ export function PageManagementPage() {
                           title="发布后下降比例"
                           value={selectedPage.dropRate}
                           suffix="%"
-                          valueStyle={{ color: selectedPage.dropRate >= 10 ? "#d46b08" : "#389e0d" }}
+                          valueStyle={{ color: selectedPage.dropRate >= 10 ? "#d46b08" : "#2f9e44" }}
                         />
                       </Space>
                     </Card>
@@ -1353,7 +1360,7 @@ export function PageManagementPage() {
                   disabled: requestMenu ? requestMenu.promptStatus !== "DISABLED" : true
                 },
                 {
-                  label: `智能作业（${requestMenu ? capabilityStatusMeta[requestMenu.jobStatus].label : "-"})`,
+                  label: `作业编排（${requestMenu ? capabilityStatusMeta[requestMenu.jobStatus].label : "-"})`,
                   value: "JOB",
                   disabled: requestMenu ? requestMenu.jobStatus !== "DISABLED" : true
                 }

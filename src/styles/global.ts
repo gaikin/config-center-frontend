@@ -69,7 +69,7 @@ export const GlobalStyle = createGlobalStyle`
   body {
     margin: 0;
     font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-    background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-accent) 100%);
+    background: var(--color-bg);
     min-height: 100vh;
     color: var(--color-text-primary);
     font-size: var(--font-14);
@@ -182,7 +182,7 @@ export const GlobalStyle = createGlobalStyle`
   .ant-table-thead > tr > th {
     color: var(--color-text-primary) !important;
     font-weight: 600;
-    background: #f3f6fa !important;
+    background: #f8fafc !important;
   }
 
   .ant-table-tbody > tr > td {
@@ -199,12 +199,12 @@ export const GlobalStyle = createGlobalStyle`
     background: var(--color-surface);
     border-color: var(--color-border);
     box-shadow: var(--shadow-1);
-    transition: box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
+    transition: border-color 120ms ease, background-color 120ms ease;
   }
 
   .ant-card:hover {
     border-color: var(--color-border-strong);
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   }
 
   .ant-menu-light {
@@ -216,11 +216,17 @@ export const GlobalStyle = createGlobalStyle`
   }
 
   .ant-menu-light .ant-menu-item-selected {
-    box-shadow: inset 0 0 0 1px rgba(31, 75, 122, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.24);
   }
 
   .ant-menu-light .ant-menu-item-selected::after {
     display: none;
+  }
+
+  .ant-menu-light .ant-menu-item .ant-menu-item-icon,
+  .ant-menu-light .ant-menu-submenu-title .ant-menu-item-icon,
+  .ant-btn .anticon {
+    color: currentColor;
   }
 
   .ant-btn,
@@ -228,18 +234,43 @@ export const GlobalStyle = createGlobalStyle`
   .ant-select-selector,
   .ant-menu-item,
   .ant-tag {
-    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
   }
 
   .ant-btn-primary {
     background: var(--color-primary);
     border-color: var(--color-primary);
-    box-shadow: 0 2px 8px rgba(31, 75, 122, 0.24);
   }
 
   .ant-btn-primary:hover {
     background: var(--color-primary-hover) !important;
     border-color: var(--color-primary-hover) !important;
+  }
+
+  .ant-alert-warning {
+    border: 1px solid #ffd591;
+    background: #fff7e6;
+  }
+
+  .ant-alert-warning .ant-alert-icon,
+  .ant-alert-warning .ant-alert-message {
+    color: #ad4e00;
+  }
+
+  .ant-alert-warning .ant-alert-description {
+    color: #8c5200;
+  }
+
+  .ant-tag-warning,
+  .ant-tag-gold,
+  .ant-tag-orange {
+    color: #ad4e00;
+    border-color: #ffd591;
+    background: #fff7e6;
+  }
+
+  .ant-message .ant-message-notice-content .ant-message-custom-content.ant-message-warning {
+    color: #ad4e00;
   }
 
   .ant-select-focused .ant-select-selector,

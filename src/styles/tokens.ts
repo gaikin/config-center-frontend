@@ -1,27 +1,27 @@
 export const designTokens = {
   color: {
-    background: "#edf1f5",
-    backgroundAccent: "#e7ecf2",
+    background: "#f5f7fb",
+    backgroundAccent: "#eef2f7",
     surface: "#ffffff",
-    surfaceMuted: "#f3f5f8",
+    surfaceMuted: "#f5f7fa",
     surfaceGlass: "rgba(255, 255, 255, 0.96)",
-    topRegionBg: "#121b2a",
-    topRegionBgEnd: "#1c293b",
-    topRegionText: "#f3f6fa",
-    topRegionTextMuted: "rgba(243, 246, 250, 0.92)",
-    topRegionBorder: "rgba(255, 255, 255, 0.14)",
+    topRegionBg: "#ffffff",
+    topRegionBgEnd: "#ffffff",
+    topRegionText: "#1f2937",
+    topRegionTextMuted: "rgba(76, 86, 106, 0.86)",
+    topRegionBorder: "rgba(226, 232, 240, 0.95)",
     textPrimary: "#1f2937",
-    textSecondary: "#334155",
-    textTertiary: "#5f6d80",
-    border: "#d0d8e3",
-    borderStrong: "#a8b4c5",
-    primary: "#1f4b7a",
-    primaryHover: "#163a5f",
-    primarySoft: "rgba(31, 75, 122, 0.1)",
-    success: "#2f6f55",
-    warning: "#916736",
-    danger: "#a34747",
-    focusRing: "rgba(31, 75, 122, 0.28)"
+    textSecondary: "#4c566a",
+    textTertiary: "#7a8599",
+    border: "#e2e8f0",
+    borderStrong: "#cbd5e1",
+    primary: "#1677ff",
+    primaryHover: "#4096ff",
+    primarySoft: "rgba(22, 119, 255, 0.12)",
+    success: "#2f9e44",
+    warning: "#d46b08",
+    danger: "#d4380d",
+    focusRing: "rgba(22, 119, 255, 0.2)"
   },
   spacing: {
     4: "4px",
@@ -40,9 +40,9 @@ export const designTokens = {
     20: "14px"
   },
   shadow: {
-    level1: "0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 6px rgba(15, 23, 42, 0.06)",
-    level2: "0 6px 18px rgba(15, 23, 42, 0.1)",
-    level3: "0 12px 28px rgba(15, 23, 42, 0.14)"
+    level1: "0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 10px rgba(15, 23, 42, 0.05)",
+    level2: "0 10px 24px rgba(15, 23, 42, 0.08)",
+    level3: "0 16px 36px rgba(15, 23, 42, 0.12)"
   },
   typography: {
     32: { size: "32px", lineHeight: "40px", weight: 600 },
@@ -117,9 +117,9 @@ export const antdComponentTokens = {
     itemBorderRadius: 6,
     activeBarHeight: 0,
     itemColor: designTokens.color.textSecondary,
-    itemHoverBg: "rgba(31, 75, 122, 0.08)",
+    itemHoverBg: "rgba(22, 119, 255, 0.08)",
     itemHoverColor: designTokens.color.primaryHover,
-    itemSelectedBg: designTokens.color.primarySoft,
+    itemSelectedBg: "rgba(22, 119, 255, 0.14)",
     itemSelectedColor: designTokens.color.primary
   },
   Button: {

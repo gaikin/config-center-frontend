@@ -38,6 +38,7 @@ import { configCenterService } from "../../services/configCenterService";
 import { useMockSession } from "../../session/mockSession";
 import { PromptRichPreview } from "./PromptRichPreview";
 import { PromptTemplateEditor } from "./PromptTemplateEditor";
+import { rulesLayoutConfig } from "./rulesLayoutConfig";
 import { RulesPageMode, useRulesPageModel } from "./useRulesPageModel";
 import { buildDefaultListLookupMatcher, FlatConditionDraft, InterfaceInputParamDraft, ListLookupMatcherDraft, LOGIC_OPERATOR_WIDTH, OperandDraft, defaultInterfaceInputBinding, deriveMachineKeyFromOutputPath, interfaceInputSourceOptions, normalizeLookupSourceType, normalizeOperator, normalizeSourceType, closeModeLabel, contextOptions, listLookupSourceOptions, operatorOptions, sourceOptions, statusColor } from "./rulesPageShared";
 import { OperandPill, InterfaceInputValueEditor } from "./rulesOperandRenderers";
@@ -60,6 +61,13 @@ type EffectiveTarget = {
 };
 
 type RuleListStatusFilter = "ALL" | LifecycleState;
+
+const rulesSummaryAccents = {
+  total: "linear-gradient(90deg, #1677ff 0%, #4c9dff 100%)",
+  draft: "linear-gradient(90deg, #64748b 0%, #94a3b8 100%)",
+  active: "linear-gradient(90deg, #2f9e44 0%, #5ab86b 100%)",
+  disabled: "linear-gradient(90deg, #d46b08 0%, #f59e0b 100%)"
+} as const;
 
 const PageHeader = styled.div`
   margin-bottom: var(--space-16);
@@ -106,8 +114,8 @@ const StickyEditorFooter = styled.div`
   z-index: 12;
   margin: 12px -24px -24px;
   padding: 10px 24px 14px;
-  border-top: 1px solid #f0f0f0;
-  background: #fff;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
   box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.08);
 `;
 
@@ -125,20 +133,20 @@ function CompactHint({
   const palette =
     tone === "success"
       ? {
-          border: "#D0D5DD",
-          background: "#F8FAFC",
-          text: "#344054"
+          border: "#e2e8f0",
+          background: "#f8fafc",
+          text: "#334155"
         }
       : tone === "info"
         ? {
-            border: "#7CB2F8",
-            background: "#EAF4FF",
-            text: "#175CD3"
+            border: "#bfdbfe",
+            background: "#eff6ff",
+            text: "#1d4ed8"
           }
         : {
-            border: "#F3C969",
-            background: "#FFF7E6",
-            text: "#B54708"
+            border: "#ffd591",
+            background: "#fff7e6",
+            text: "#ad4e00"
           };
 
   return (
@@ -156,14 +164,14 @@ function CompactHint({
             color={tone === "info" ? "processing" : tone === "warning" ? "warning" : undefined}
             style={
               tone === "success"
-                ? { marginInlineEnd: 0, borderColor: "#D0D5DD", background: "#F9FAFB", color: "#344054" }
+                ? { marginInlineEnd: 0, borderColor: "#e2e8f0", background: "#f8fafc", color: "#334155" }
                 : { marginInlineEnd: 0 }
             }
           >
             {tone === "success" ? "已配置" : tone === "info" ? "说明" : "待处理"}
           </Tag>
           <Typography.Text style={{ color: palette.text }}>{title}</Typography.Text>
-          {description ? <Typography.Text style={{ color: "#344054" }}>{description}</Typography.Text> : null}
+          {description ? <Typography.Text style={{ color: "var(--color-text-secondary)" }}>{description}</Typography.Text> : null}
         </Space>
         {extra}
       </Space>
@@ -237,14 +245,14 @@ function IssueQuickNavCard({
               width: "100%",
               alignItems: "center",
               justifyContent: "space-between",
-              border: "1px solid #f0f0f0",
+              border: "1px solid var(--color-border)",
               borderRadius: 8,
-              background: "#fff",
+              background: "var(--color-surface)",
               padding: "8px 10px",
               cursor: "pointer"
             }}
           >
-            <span style={{ color: "rgba(0,0,0,0.88)" }}>{item.label}</span>
+            <span style={{ color: "var(--color-text-primary)" }}>{item.label}</span>
             <Tag color="error" style={{ marginInlineEnd: 0 }}>
               {item.count}
             </Tag>
@@ -696,7 +704,7 @@ export function RulesPage({
     return (
       <>
         <Space direction="vertical" size={10} style={{ width: "100%", marginBottom: 12 }}>
-          <Typography.Text style={{ color: "#475467" }}>
+          <Typography.Text style={{ color: "var(--color-text-secondary)" }}>
             左侧维护条件链路，右侧编辑当前选中值的来源与取值。
           </Typography.Text>
           {logicValidationIssues.length > 0 ? (
@@ -751,8 +759,8 @@ export function RulesPage({
                   id={`logic-condition-${condition.id}`}
                   size="small"
                   style={{
-                    borderColor: issueCount > 0 ? "#ffccc7" : isSelected ? "var(--cc-source-selected, #84CAFF)" : "#f0f0f0",
-                    background: isSelected ? "#f7fbff" : "#fff"
+                    borderColor: issueCount > 0 ? "#ffccc7" : isSelected ? "var(--color-primary)" : "var(--color-border)",
+                    background: isSelected ? "rgba(22, 119, 255, 0.06)" : "var(--color-surface)"
                   }}
                   bodyStyle={{ padding: 12 }}
                 >
@@ -784,10 +792,10 @@ export function RulesPage({
                       <div
                         style={{
                           minWidth: 0,
-                          border: "1px solid #d9e8ff",
+                          border: "1px solid var(--color-border)",
                           borderRadius: 8,
                           padding: "6px 8px",
-                          background: "#fff",
+                          background: "var(--color-surface)",
                           display: "flex",
                           flexDirection: "column",
                           gap: 4
@@ -810,10 +818,10 @@ export function RulesPage({
                       <div
                         style={{
                           minWidth: 0,
-                          border: "1px solid #d9e8ff",
+                          border: "1px solid var(--color-border)",
                           borderRadius: 8,
                           padding: "6px 8px",
-                          background: "#fff",
+                          background: "var(--color-surface)",
                           display: "flex",
                           flexDirection: "column",
                           gap: 4
@@ -982,20 +990,26 @@ export function RulesPage({
                                   rowKey={(row) => `${row.tab}:${row.name}`}
                                   pagination={false}
                                   dataSource={selectedInterfaceInputParams}
+                                  scroll={{ x: rulesLayoutConfig.apiInputTable.scrollX }}
                                   columns={[
                                     {
                                       title: "参数",
-                                      width: 220,
+                                      width: 180,
                                       render: (_, row) => (
                                         <Space size={4}>
-                                          <Typography.Text>{row.name}</Typography.Text>
+                                          <Typography.Text
+                                            ellipsis={{ tooltip: row.name }}
+                                            style={{ maxWidth: 120 }}
+                                          >
+                                            {row.name}
+                                          </Typography.Text>
                                           {row.validationConfig.required ? <Tag color="error">必填</Tag> : <Tag>可选</Tag>}
                                         </Space>
                                       )
                                     },
                                     {
                                       title: "来源",
-                                      width: 140,
+                                      width: 128,
                                       render: (_, row) => {
                                         const binding = selectedInterfaceInputConfig[row.name] ?? defaultInterfaceInputBinding();
                                         return (
@@ -1013,11 +1027,15 @@ export function RulesPage({
                                         );
                                       }
                                     },
-                                    {
-                                      title: "值类型",
-                                      width: 120,
-                                      render: (_, row) => <Tag color="blue">{row.valueType}</Tag>
-                                    },
+                                    ...(rulesLayoutConfig.apiInputTable.showValueTypeColumn
+                                      ? [
+                                          {
+                                            title: "值类型",
+                                            width: 120,
+                                            render: (_: unknown, row: InterfaceInputParamDraft) => <Tag color="blue">{row.valueType}</Tag>
+                                          }
+                                        ]
+                                      : []),
                                     {
                                       title: "取值",
                                       render: (_, row) => (
@@ -1155,7 +1173,7 @@ export function RulesPage({
                                   <div
                                     key={matcher.id}
                                     style={{
-                                      border: "1px solid #f0f0f0",
+                                      border: "1px solid var(--color-border)",
                                       borderRadius: 8,
                                       padding: 10
                                     }}
@@ -1416,22 +1434,22 @@ export function RulesPage({
       {!embedded ? (
         <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
+            <SummaryCard $accent={rulesSummaryAccents.total}>
               <Statistic title={isTemplateMode ? "模板总数" : "规则总数"} value={rowSummary.total} />
             </SummaryCard>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #4a617a 0%, #7387a0 100%)">
+            <SummaryCard $accent={rulesSummaryAccents.draft}>
               <Statistic title="草稿" value={rowSummary.draft} />
             </SummaryCard>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
+            <SummaryCard $accent={rulesSummaryAccents.active}>
               <Statistic title="已生效" value={rowSummary.active} />
             </SummaryCard>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
+            <SummaryCard $accent={rulesSummaryAccents.disabled}>
               <Statistic title="已停用" value={rowSummary.disabled} />
             </SummaryCard>
           </Col>
@@ -1626,7 +1644,7 @@ export function RulesPage({
                 {hasUnsavedEdits ? (
                   <Tag color="warning">未保存更改</Tag>
                 ) : (
-                  <Tag style={{ borderColor: "#D0D5DD", background: "#F9FAFB", color: "#344054" }}>内容已保存</Tag>
+                  <Tag style={{ borderColor: "var(--color-border)", background: "var(--color-surface-muted)", color: "var(--color-text-secondary)" }}>内容已保存</Tag>
                 )}
                 <Tag color={editorBlockingCount > 0 ? "error" : "default"}>阻塞 {editorBlockingCount}</Tag>
                 <Tag color={editorWarningCount > 0 ? "warning" : "default"}>警告 {editorWarningCount}</Tag>
@@ -1808,17 +1826,17 @@ export function RulesPage({
                             <Card id="rule-section-summary" size="small" title="实时摘要">
                               <Space direction="vertical" style={{ width: "100%" }} size={10}>
                                 <Tag color="blue">{ruleForm.getFieldValue("name") || "未命名规则"}</Tag>
-                                <Typography.Text style={{ color: "#475467" }}>页面：{currentPageName}</Typography.Text>
-                                <Typography.Text style={{ color: "#475467" }}>
+                                <Typography.Text style={{ color: "var(--color-text-secondary)" }}>页面：{currentPageName}</Typography.Text>
+                                <Typography.Text style={{ color: "var(--color-text-secondary)" }}>
                                   提示模式：{watchedPromptMode ? promptModeLabelMap[watchedPromptMode] : "-"} / 关闭方式：
                                   {ruleForm.getFieldValue("closeMode") ? closeModeLabel[ruleForm.getFieldValue("closeMode") as RuleDefinition["closeMode"]] : "-"}
                                 </Typography.Text>
-                                <Typography.Text style={{ color: "#475467" }}>条件摘要：{conditionSummary}</Typography.Text>
+                                <Typography.Text style={{ color: "var(--color-text-secondary)" }}>条件摘要：{conditionSummary}</Typography.Text>
                                 <Typography.Text strong>{promptPreviewTitle}</Typography.Text>
                                 <div
                                   style={{
-                                    border: "1px solid #B8D7FF",
-                                    background: "#F4F9FF",
+                                    border: "1px solid #dbeafe",
+                                    background: "#f5f9ff",
                                     borderRadius: 12,
                                     padding: 16
                                   }}
@@ -1831,7 +1849,7 @@ export function RulesPage({
                                         message="当前仅展示浮窗样式预览"
                                       />
                                     ) : null}
-                                    <div style={{ whiteSpace: "pre-wrap", color: "rgba(0,0,0,0.88)" }}>
+                                    <div style={{ whiteSpace: "pre-wrap", color: "var(--color-text-primary)" }}>
                                       {watchedBodyTemplate ? (
                                         <PromptRichPreview
                                           bodyTemplate={watchedBodyTemplate}
@@ -1880,7 +1898,7 @@ export function RulesPage({
                                 description={previewResult.detail}
                               />
                             ) : (
-                              <Typography.Text style={{ color: "#475467" }}>
+                              <Typography.Text style={{ color: "var(--color-text-secondary)" }}>
                                 建议执行一次预览，确认提示展示效果与规则表达。
                               </Typography.Text>
                             )}
@@ -1932,7 +1950,7 @@ export function RulesPage({
                 {editorBlockingCount > 0 ? (
                   <Tag color="error">存在 {editorBlockingCount} 个阻塞问题</Tag>
                 ) : (
-                  <Tag style={{ borderColor: "#D0D5DD", background: "#F9FAFB", color: "#344054" }}>保存校验通过</Tag>
+                  <Tag style={{ borderColor: "var(--color-border)", background: "var(--color-surface-muted)", color: "var(--color-text-secondary)" }}>保存校验通过</Tag>
                 )}
                 {editorWarningCount > 0 ? <Tag color="warning">提示 {editorWarningCount}</Tag> : null}
               </Space>

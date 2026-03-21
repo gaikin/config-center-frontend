@@ -4,6 +4,8 @@ import { configCenterService } from "../services/configCenterService";
 import { ROLE_PERMISSIONS_CHANGED_EVENT } from "./sessionEvents";
 import type { RoleItem } from "../types";
 
+export const isMockModeEnabled = import.meta.env.VITE_ENABLE_MOCK_MODE === "true";
+
 export type MockUserPersona =
   | "CONFIG_OPERATOR_BRANCH"
   | "PERMISSION_ADMIN_BRANCH"
@@ -216,7 +218,8 @@ export function useMockSession() {
     throw new Error("useMockSession must be used within MockSessionProvider");
   }
   const meta = mockUserPersonaMetaMap[context.persona];
-  const hasResource = (resourcePath: string) => context.effectiveResourcePaths.includes(resourcePath);
+  const hasResource = (resourcePath: string) =>
+    !isMockModeEnabled || context.effectiveResourcePaths.includes(resourcePath);
   return {
     ...context,
     meta,

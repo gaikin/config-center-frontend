@@ -38,28 +38,28 @@ type DashboardPalette = {
 };
 
 const dashboardPalette: DashboardPalette = {
-  pageBg: "linear-gradient(180deg, #f8fafd 0%, #f3f7fb 100%)",
-  pageBorder: "#d9e3ee",
-  panelBg: "#fdfefe",
-  panelBorder: "#d8e2ed",
-  panelBorderSoft: "#e4ebf3",
-  heroBg: "linear-gradient(135deg, #f7fafd 0%, #eef4fa 100%)",
-  heroBorder: "#d4dfeb",
-  heroTitle: "#223142",
-  heroText: "#4a5d72",
-  heroTagBg: "#ecf3fa",
-  heroTagBorder: "#c8d7e7",
-  heroTagText: "#37506a",
-  heroButtonBg: "#e8f1f8",
-  heroButtonBorder: "#c2d5e7",
-  heroButtonHoverBg: "#dae9f4",
-  heroButtonHoverBorder: "#a8c1d8",
-  headerHint: "#4b5f74",
+  pageBg: "#ffffff",
+  pageBorder: "#e2e8f0",
+  panelBg: "#ffffff",
+  panelBorder: "#e2e8f0",
+  panelBorderSoft: "#edf2f7",
+  heroBg: "#f5f9ff",
+  heroBorder: "#dbeafe",
+  heroTitle: "#1f2937",
+  heroText: "#4c566a",
+  heroTagBg: "#eef4ff",
+  heroTagBorder: "#dbe7ff",
+  heroTagText: "#34507a",
+  heroButtonBg: "#ffffff",
+  heroButtonBorder: "#c7d7f2",
+  heroButtonHoverBg: "#f0f6ff",
+  heroButtonHoverBorder: "#a9c2ea",
+  headerHint: "#6b7280",
   metricTones: [
-    "linear-gradient(90deg, #6c88a8 0%, #89a3bf 100%)",
-    "linear-gradient(90deg, #9a8567 0%, #b09b7c 100%)",
-    "linear-gradient(90deg, #6f8095 0%, #8d9db2 100%)",
-    "linear-gradient(90deg, #96747a 0%, #af8a90 100%)"
+    "linear-gradient(90deg, #1677ff 0%, #4c9dff 100%)",
+    "linear-gradient(90deg, #2f9e44 0%, #56b56b 100%)",
+    "linear-gradient(90deg, #3b82f6 0%, #6ea8ff 100%)",
+    "linear-gradient(90deg, #d46b08 0%, #f59e0b 100%)"
   ]
 };
 
@@ -105,14 +105,12 @@ const PageIntro = styled(Typography.Paragraph)`
 `;
 
 const HeroCard = styled(Card)`
-  margin-bottom: var(--space-16);
   border: 1px solid var(--dash-hero-border);
-  overflow: hidden;
   background: var(--dash-hero-bg);
-  box-shadow: 0 6px 18px rgba(38, 46, 56, 0.08);
+  box-shadow: none;
 
   .ant-card-body {
-    padding: 20px 22px;
+    padding: 18px 20px;
   }
 `;
 
@@ -159,7 +157,7 @@ const MetricCard = styled(Card)<{ $tone: string }>`
   &::before {
     content: "";
     display: block;
-    height: 4px;
+    height: 3px;
     background: ${({ $tone }) => $tone};
   }
 
@@ -169,7 +167,7 @@ const MetricCard = styled(Card)<{ $tone: string }>`
 `;
 
 const SectionRow = styled(Row)`
-  margin-top: var(--space-16);
+  margin-top: var(--space-12);
 `;
 
 const DataCard = styled(Card)`
@@ -182,7 +180,7 @@ const DataCard = styled(Card)`
 `;
 
 const RecentCard = styled(DataCard)`
-  margin-top: var(--space-16);
+  margin-top: var(--space-12);
 `;
 
 const DashboardSpace = styled(Space)`
@@ -197,6 +195,33 @@ const QuickActionCard = styled(DataCard)`
   .ant-btn {
     justify-content: flex-start;
   }
+`;
+
+const SectionBlock = styled.section`
+  margin-top: var(--space-16);
+  padding: var(--space-16);
+  border-radius: var(--radius-12);
+  border: 1px solid var(--dash-panel-border);
+  background: var(--dash-panel-bg);
+`;
+
+const SectionHead = styled.div`
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+`;
+
+const SectionTitle = styled(Typography.Text)`
+  color: var(--color-text-primary);
+  font-size: var(--font-16);
+  line-height: var(--lh-16);
+  font-weight: 600;
+`;
+
+const SectionHint = styled(Typography.Text)`
+  color: var(--color-text-tertiary);
 `;
 
 export function DashboardPage() {
@@ -312,153 +337,171 @@ export function DashboardPage() {
         <HeaderMain>
           <PageTitle className="type-24">我的工作台</PageTitle>
           <PageIntro className="type-14">
-            今天先看待处理和下降提醒，再从“菜单管理”进入主路径，继续完成配置、发布和结果查看。
+            今天先看待处理和下降提醒，优先从“作业编排”和“菜单管理”进入主路径，继续完成配置、发布和结果查看。
           </PageIntro>
         </HeaderMain>
       </PageHeader>
 
-      <HeroCard>
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <div>
-            <HeroTitle level={4}>今日重点</HeroTitle>
-            <HeroIntro>
-              当前有 {totalPending} 项待处理，建议先从菜单管理进入页面，优先处理待发布与待确认事项。
-            </HeroIntro>
-          </div>
-          <Space size={[8, 8]} wrap>
-            <HeroSummaryTag>待发布 {pendingSummary?.draftCount ?? 0}</HeroSummaryTag>
-            <HeroSummaryTag>待确认 {pendingSummary?.riskConfirmPendingCount ?? 0}</HeroSummaryTag>
-            <HeroSummaryTag>待补充配置 {pendingSummary?.validationFailedCount ?? 0}</HeroSummaryTag>
-            <HeroSummaryTag>下降提醒 {dropReminders.length}</HeroSummaryTag>
-          </Space>
-          <HeroActionButton icon={<ArrowRightOutlined />} onClick={() => navigate("/page-management")}>
-            前往菜单管理继续处理
-          </HeroActionButton>
-        </Space>
-      </HeroCard>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone={palette.metricTones[0]} loading={loading}>
-            <Statistic title="待发布事项" value={pendingSummary?.draftCount ?? 0} />
-          </MetricCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone={palette.metricTones[1]} loading={loading}>
-            <Statistic title="待确认事项" value={pendingSummary?.riskConfirmPendingCount ?? 0} />
-          </MetricCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone={palette.metricTones[2]} loading={loading}>
-            <Statistic title="待补充配置" value={pendingSummary?.validationFailedCount ?? 0} />
-          </MetricCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <MetricCard $tone={palette.metricTones[3]} loading={loading}>
-            <Statistic title="下降提醒" value={dropReminders.length} />
-          </MetricCard>
-        </Col>
-      </Row>
-
-      <SectionRow gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <DataCard title="我的待处理" loading={loading}>
-            <Space wrap size={8}>
-              <Tag>待发布 {pendingSummary?.draftCount ?? 0}</Tag>
-              <Tag>待确认 {pendingSummary?.riskConfirmPendingCount ?? 0}</Tag>
-              <Tag>待补充配置 {pendingSummary?.validationFailedCount ?? 0}</Tag>
+      <SectionBlock data-section="pilot-overview">
+        <SectionHead>
+          <SectionTitle>总览区块</SectionTitle>
+          <SectionHint className="type-12">白底信息块 + 浅色分割，优先突出主任务</SectionHint>
+        </SectionHead>
+        <HeroCard>
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <div>
+              <HeroTitle level={4}>今日重点</HeroTitle>
+              <HeroIntro>
+                当前有 {totalPending} 项待处理，建议先进入作业编排处理执行链路，再回到菜单管理推进待发布事项。
+              </HeroIntro>
+            </div>
+            <Space size={[8, 8]} wrap>
+              <HeroSummaryTag>待发布 {pendingSummary?.draftCount ?? 0}</HeroSummaryTag>
+              <HeroSummaryTag>待确认 {pendingSummary?.riskConfirmPendingCount ?? 0}</HeroSummaryTag>
+              <HeroSummaryTag>待补充配置 {pendingSummary?.validationFailedCount ?? 0}</HeroSummaryTag>
+              <HeroSummaryTag>下降提醒 {dropReminders.length}</HeroSummaryTag>
             </Space>
-            <ListSection>
+            <HeroActionButton icon={<ArrowRightOutlined />} onClick={() => navigate("/page-management")}>
+              前往菜单管理继续处理
+            </HeroActionButton>
+          </Space>
+        </HeroCard>
+        <SectionRow gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard $tone={palette.metricTones[0]} loading={loading}>
+              <Statistic title="待发布事项" value={pendingSummary?.draftCount ?? 0} />
+            </MetricCard>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard $tone={palette.metricTones[1]} loading={loading}>
+              <Statistic title="待确认事项" value={pendingSummary?.riskConfirmPendingCount ?? 0} />
+            </MetricCard>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard $tone={palette.metricTones[2]} loading={loading}>
+              <Statistic title="待补充配置" value={pendingSummary?.validationFailedCount ?? 0} />
+            </MetricCard>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <MetricCard $tone={palette.metricTones[3]} loading={loading}>
+              <Statistic title="下降提醒" value={dropReminders.length} />
+            </MetricCard>
+          </Col>
+        </SectionRow>
+      </SectionBlock>
+
+      <SectionBlock data-section="pilot-status">
+        <SectionHead>
+          <SectionTitle>待处理与提醒</SectionTitle>
+          <SectionHint className="type-12">把风险项和近期操作并排，减少视线跳转</SectionHint>
+        </SectionHead>
+        <SectionRow gutter={[16, 16]}>
+          <Col xs={24} lg={12}>
+            <DataCard title="我的待处理" loading={loading}>
+              <Space wrap size={8}>
+                <Tag>待发布 {pendingSummary?.draftCount ?? 0}</Tag>
+                <Tag>待确认 {pendingSummary?.riskConfirmPendingCount ?? 0}</Tag>
+                <Tag>待补充配置 {pendingSummary?.validationFailedCount ?? 0}</Tag>
+              </Space>
+              <ListSection>
+                <List
+                  size="small"
+                  dataSource={pendingItems}
+                  locale={{ emptyText: "暂无待处理事项" }}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                        <Tag>{pendingTypeLabelMap[item.pendingType]}</Tag>
+                        <Typography.Text className="card-info">{item.resourceName}</Typography.Text>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              </ListSection>
+            </DataCard>
+          </Col>
+
+          <Col xs={24} lg={12}>
+            <DataCard title="运行提醒（触发下降）" loading={loading}>
               <List
                 size="small"
-                dataSource={pendingItems}
-                locale={{ emptyText: "暂无待处理事项" }}
+                dataSource={dropReminders}
+                locale={{ emptyText: "暂无明显下降提醒" }}
                 renderItem={(item) => (
                   <List.Item>
-                    <Space direction="vertical" size={4} style={{ width: "100%" }}>
-                      <Tag>{pendingTypeLabelMap[item.pendingType]}</Tag>
-                      <Typography.Text className="card-info">{item.resourceName}</Typography.Text>
+                    <Space direction="vertical" size={4}>
+                      <Typography.Text strong>{item.pageName}</Typography.Text>
+                      <Typography.Text type="secondary" className="card-info">
+                        {getOrgLabel(item.scope)} · 下降 {item.dropRatio}%
+                      </Typography.Text>
+                      <Typography.Text type="secondary" className="card-info">{item.detail}</Typography.Text>
                     </Space>
                   </List.Item>
                 )}
               />
-            </ListSection>
-          </DataCard>
-        </Col>
+            </DataCard>
+          </Col>
+        </SectionRow>
 
-        <Col xs={24} lg={12}>
-          <DataCard title="运行提醒（触发下降）" loading={loading}>
-            <List
-              size="small"
-              dataSource={dropReminders}
-              locale={{ emptyText: "暂无明显下降提醒" }}
-              renderItem={(item) => (
-                <List.Item>
-                  <Space direction="vertical" size={4}>
-                    <Typography.Text strong>{item.pageName}</Typography.Text>
-                    <Typography.Text type="secondary" className="card-info">
-                      {getOrgLabel(item.scope)} · 下降 {item.dropRatio}%
-                    </Typography.Text>
-                    <Typography.Text type="secondary" className="card-info">{item.detail}</Typography.Text>
-                  </Space>
-                </List.Item>
-                )}
-              />
-          </DataCard>
-        </Col>
-      </SectionRow>
+        <RecentCard title="我最近改过" loading={loading}>
+          <List
+            size="small"
+            dataSource={recentEdits}
+            locale={{ emptyText: "暂无最近修改记录" }}
+            renderItem={(item) => (
+              <List.Item>
+                <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                  <Tag>{resourceTypeLabelMap[item.type]}</Tag>
+                  <Typography.Text className="card-info">{item.name}</Typography.Text>
+                  <Typography.Text type="secondary" className="type-12">
+                    {item.updatedAt}
+                  </Typography.Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        </RecentCard>
+      </SectionBlock>
 
-      <RecentCard title="我最近改过" loading={loading}>
-        <List
-          size="small"
-          dataSource={recentEdits}
-          locale={{ emptyText: "暂无最近修改记录" }}
-          renderItem={(item) => (
-            <List.Item>
-              <Space direction="vertical" size={4} style={{ width: "100%" }}>
-                <Tag>{resourceTypeLabelMap[item.type]}</Tag>
-                <Typography.Text className="card-info">{item.name}</Typography.Text>
-                <Typography.Text type="secondary" className="type-12">
-                  {item.updatedAt}
-                </Typography.Text>
-              </Space>
-            </List.Item>
-          )}
-        />
-      </RecentCard>
+      <SectionBlock data-section="pilot-actions">
+        <SectionHead>
+          <SectionTitle>操作入口</SectionTitle>
+          <SectionHint className="type-12">高频操作和看板配对，减少来回切页</SectionHint>
+        </SectionHead>
+        <SectionRow gutter={[16, 16]}>
+          <Col xs={24} lg={12}>
+            <QuickActionCard title="常用入口">
+              <DashboardSpace direction="vertical" size={12}>
+                <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/jobs")}>进入作业编排</Button>
+                <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/page-management")}>进入菜单管理</Button>
+                <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/prompts?action=create")}>新建提示规则</Button>
+                <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/prompts")}>复制已有规则</Button>
+                <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/interfaces")}>注册 API</Button>
+                <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/stats")}>查看运行统计</Button>
+              </DashboardSpace>
+            </QuickActionCard>
+          </Col>
 
-      <SectionRow gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <QuickActionCard title="常用入口">
-            <DashboardSpace direction="vertical" size={12}>
-              <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/page-management")}>进入菜单管理</Button>
-              <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/prompts?action=create")}>新建提示规则</Button>
-              <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/prompts")}>复制已有规则</Button>
-              <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/interfaces")}>注册 API</Button>
-              <Button block icon={<ArrowRightOutlined />} onClick={() => navigate("/stats")}>查看运行统计</Button>
-            </DashboardSpace>
-          </QuickActionCard>
-        </Col>
-
-        <Col xs={24} lg={12}>
-          <DataCard title="业务看板" loading={loading}>
-            <Row gutter={[16, 16]}>
-              <Col span={12}>
-                <Statistic title="已启用页面数" value={overview?.pageResourceCount ?? 0} />
-              </Col>
-              <Col span={12}>
-                <Statistic title="提示触发量" value={triggerCount} />
-              </Col>
-              <Col span={12}>
-                <Statistic title="作业执行量" value={executionCount} />
-              </Col>
-              <Col span={12}>
-                <Statistic title="下降提醒数" value={dropReminders.length} />
-              </Col>
-            </Row>
-          </DataCard>
-        </Col>
-      </SectionRow>
+          <Col xs={24} lg={12}>
+            <DataCard title="业务看板" loading={loading}>
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <Statistic title="已启用页面数" value={overview?.pageResourceCount ?? 0} />
+                </Col>
+                <Col span={12}>
+                  <Statistic title="提示触发量" value={triggerCount} />
+                </Col>
+                <Col span={12}>
+                  <Statistic title="作业执行量" value={executionCount} />
+                </Col>
+                <Col span={12}>
+                  <Statistic title="下降提醒数" value={dropReminders.length} />
+                </Col>
+              </Row>
+            </DataCard>
+          </Col>
+        </SectionRow>
+      </SectionBlock>
     </DashboardShell>
   );
 }

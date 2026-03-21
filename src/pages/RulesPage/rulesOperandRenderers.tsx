@@ -32,13 +32,13 @@ export function OperandPill({ conditionId, side, operand, selectedOperand, onSel
         minWidth: 0,
         maxWidth: OPERAND_PILL_WIDTH,
         borderRadius: 16,
-        border: `1px solid ${summary.warning ? "var(--cc-source-warning, #FDA29B)" : summary.visual.border}`,
-        background: summary.warning ? "var(--cc-source-warning-bg, #FEF3F2)" : summary.visual.bg,
-        color: summary.warning ? "var(--cc-source-warning, #B42318)" : summary.visual.color,
+        border: `1px solid ${summary.warning ? "var(--cc-source-warning, #ffd591)" : summary.visual.border}`,
+        background: summary.warning ? "var(--cc-source-warning-bg, #fff7e6)" : summary.visual.bg,
+        color: summary.warning ? "var(--cc-source-warning, #ad4e00)" : summary.visual.color,
         padding: "8px 12px",
         minHeight: 32,
         cursor: "pointer",
-        outline: selected ? "2px solid var(--cc-source-selected, #84CAFF)" : "none"
+        outline: selected ? "2px solid var(--cc-source-selected, #1677ff)" : "none"
       }}
     >
       <span style={{ fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{summary.visual.label}</span>

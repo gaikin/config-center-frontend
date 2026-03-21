@@ -15,6 +15,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import {
   MockSessionProvider,
+  isMockModeEnabled,
   mockUserPersonaMetaMap,
   mockUserPersonaOptions,
   type MockUserPersona,
@@ -34,7 +35,7 @@ const navItems: NavItem[] = [
   { key: "/", label: "我的工作台", icon: <HomeOutlined />, menuResourcePath: "/menu/dashboard" },
   { key: "/page-management", label: "菜单管理", icon: <AppstoreOutlined />, menuResourcePath: "/menu/page-management" },
   { key: "/prompts", label: "智能提示", icon: <BulbOutlined />, menuResourcePath: "/menu/prompts" },
-  { key: "/jobs", label: "智能作业", icon: <RobotOutlined />, menuResourcePath: "/menu/jobs" },
+  { key: "/jobs", label: "作业编排", icon: <RobotOutlined />, menuResourcePath: "/menu/jobs" },
   { key: "/interfaces", label: "API注册", icon: <ApiOutlined />, menuResourcePath: "/menu/interfaces" },
   { key: "/stats", label: "运行统计", icon: <BarChartOutlined />, menuResourcePath: "/menu/stats" },
   { key: "/run-records", label: "运行记录", icon: <FileSearchOutlined />, menuResourcePath: "/menu/run-records" },
@@ -52,8 +53,7 @@ const compatiblePathToBizPath: Array<{ from: string; to: string }> = [
   { from: "/permission-resources", to: "/advanced" },
   { from: "/audit-metrics", to: "/stats" },
   { from: "/preprocessors", to: "/advanced" },
-  { from: "/roles", to: "/advanced" },
-  { from: "/login-test", to: "/" }
+  { from: "/roles", to: "/advanced" }
 ];
 
 const HeaderBar = styled(Header)`
@@ -63,12 +63,12 @@ const HeaderBar = styled(Header)`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(160deg, var(--color-top-region-bg) 0%, var(--color-top-region-bg-end) 100%);
+  background: var(--color-top-region-bg);
   color: var(--color-top-region-text);
   padding: var(--space-12) var(--space-24);
   min-height: 76px;
   border-bottom: 1px solid var(--color-top-region-border);
-  box-shadow: var(--shadow-1);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 `;
 
 const LogoBlock = styled.div`
@@ -84,9 +84,9 @@ const LogoPill = styled.span`
   font-size: var(--font-12);
   line-height: var(--lh-12);
   letter-spacing: 0.6px;
-  color: var(--color-top-region-text);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--color-primary);
+  background: rgba(22, 119, 255, 0.08);
+  border: 1px solid rgba(22, 119, 255, 0.2);
 `;
 
 const LogoTitle = styled(Typography.Text)`
@@ -150,30 +150,17 @@ const SideMenu = styled(Menu)`
   background: transparent !important;
 `;
 
-const HeaderActionButton = styled(Button)`
-  color: var(--color-top-region-text);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-
-  &:hover,
-  &:focus {
-    color: var(--color-top-region-text) !important;
-    border-color: rgba(255, 255, 255, 0.36) !important;
-    background: rgba(255, 255, 255, 0.16) !important;
-  }
-`;
-
 const MobileNavButton = styled(Button)`
   display: none;
   color: var(--color-top-region-text);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: #f8fafc;
+  border-color: #d7e1ec;
 
   &:hover,
   &:focus {
     color: var(--color-top-region-text) !important;
-    border-color: rgba(255, 255, 255, 0.32) !important;
-    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: #b8c7da !important;
+    background: #eef3fa !important;
   }
 
   @media (max-width: 1024px) {
@@ -184,13 +171,13 @@ const MobileNavButton = styled(Button)`
 const HeaderActions = styled(Space)`
   .ant-btn-default {
     color: var(--color-top-region-text);
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.24);
+    background: #f8fafc;
+    border-color: #d7e1ec;
   }
 
   .ant-select-selector {
-    background: rgba(255, 255, 255, 0.12) !important;
-    border-color: rgba(255, 255, 255, 0.24) !important;
+    background: #f8fafc !important;
+    border-color: #d7e1ec !important;
     color: var(--color-top-region-text) !important;
   }
 
@@ -269,9 +256,6 @@ function AppShellLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const normalized = normalizePath(location.pathname);
-    if (normalized === "/login-test") {
-      return;
-    }
     const canAccess = visibleNavItems.some((item) => {
       if (item.key === "/") {
         return normalized === "/";
@@ -290,20 +274,19 @@ function AppShellLayout({ children }: { children: React.ReactNode }) {
           <LogoPill>CONFIG CENTER</LogoPill>
           <LogoTitle className="type-20">营小助配置中心（新版）</LogoTitle>
           <LogoSubtitle className="type-12">
-            模拟登录：{currentMeta.label} · {currentMeta.description}
+            {isMockModeEnabled ? `模拟登录：${currentMeta.label} · ${currentMeta.description}` : "当前模式：正式模式"}
           </LogoSubtitle>
         </LogoBlock>
         <HeaderActions size={8}>
-          <HeaderActionButton size="small" onClick={() => navigate("/login-test")}>
-            登录测试
-          </HeaderActionButton>
-          <Select
-            value={persona}
-            size="small"
-            style={{ minWidth: 172 }}
-            onChange={(next) => setPersona(next as MockUserPersona)}
-            options={mockUserPersonaOptions}
-          />
+          {isMockModeEnabled ? (
+            <Select
+              value={persona}
+              size="small"
+              style={{ minWidth: 172 }}
+              onChange={(next) => setPersona(next as MockUserPersona)}
+              options={mockUserPersonaOptions}
+            />
+          ) : null}
           <MobileNavButton icon={<MenuOutlined />} onClick={() => setDrawerOpen(true)}>
             导航
           </MobileNavButton>

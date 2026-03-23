@@ -6,7 +6,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: "0.0.0.0"
+    host: "0.0.0.0",
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true
+      },
+      "/healthz": {
+        target: "http://localhost:8080",
+        changeOrigin: true
+      }
+    }
   },
   build: {
     rollupOptions: {

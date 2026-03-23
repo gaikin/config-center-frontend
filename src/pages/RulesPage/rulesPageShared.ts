@@ -6,7 +6,6 @@ import type {
   PromptMode,
   RuleCondition,
   RuleOperand,
-  RuleLookupSourceType,
   RuleOperandSourceType,
   RuleOperandValueType,
   RuleOperator
@@ -39,17 +38,10 @@ export type PromptVariableOption = {
 
 export type OperandSide = "left" | "right";
 
-export type PreprocessorDraft = {
+export type DataProcessorDraft = {
   id: string;
-  preprocessorId?: number;
-  params: string;
-};
-
-export type ListLookupMatcherDraft = {
-  id: string;
-  matchColumn: string;
-  sourceType: RuleLookupSourceType;
-  sourceValue: string;
+  dataProcessorId?: number;
+  args: string[];
 };
 
 export type OperandDraft = {
@@ -61,14 +53,7 @@ export type OperandDraft = {
   interfaceName?: string;
   outputPath?: string;
   interfaceInputConfig: string;
-  listDataId?: number;
-  listDataName?: string;
-  matchColumn?: string;
-  lookupSourceType?: RuleLookupSourceType;
-  lookupSourceValue?: string;
-  listMatchers: ListLookupMatcherDraft[];
-  resultField?: string;
-  preprocessors: PreprocessorDraft[];
+  dataProcessors: DataProcessorDraft[];
 };
 
 export type FlatConditionDraft = {
@@ -115,14 +100,6 @@ export const closeModeLabel: Record<PromptCloseMode, string> = {
 };
 
 export const sourceOptions: Array<{ label: string; value: RuleOperandSourceType }> = [
-  { label: "页面字段", value: "PAGE_FIELD" },
-  { label: "API字段", value: "INTERFACE_FIELD" },
-  { label: "名单字段", value: "LIST_LOOKUP_FIELD" },
-  { label: "上下文变量", value: "CONTEXT" },
-  { label: "固定值", value: "CONST" }
-];
-
-export const listLookupSourceOptions: Array<{ label: string; value: RuleLookupSourceType }> = [
   { label: "页面字段", value: "PAGE_FIELD" },
   { label: "API字段", value: "INTERFACE_FIELD" },
   { label: "上下文变量", value: "CONTEXT" },
@@ -346,21 +323,8 @@ export function buildConditionId() {
   return `condition-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-export function buildPreprocessorId() {
-  return `pre-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-}
-
-export function buildListLookupMatcherId() {
-  return `lookup-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-}
-
-export function buildDefaultListLookupMatcher(): ListLookupMatcherDraft {
-  return {
-    id: buildListLookupMatcherId(),
-    matchColumn: "",
-    sourceType: "PAGE_FIELD",
-    sourceValue: ""
-  };
+export function buildDataProcessorId() {
+  return `dp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
 export function buildDefaultOperand(sourceType: RuleOperandSourceType = "PAGE_FIELD"): OperandDraft {
@@ -370,9 +334,7 @@ export function buildDefaultOperand(sourceType: RuleOperandSourceType = "PAGE_FI
     displayValue: "",
     machineKey: "",
     interfaceInputConfig: "",
-    lookupSourceType: "PAGE_FIELD",
-    listMatchers: sourceType === "LIST_LOOKUP_FIELD" ? [buildDefaultListLookupMatcher()] : [],
-    preprocessors: []
+    dataProcessors: []
   };
 }
 
@@ -386,13 +348,6 @@ export function buildDefaultCondition(): FlatConditionDraft {
 }
 
 export function normalizeSourceType(value: string | undefined): RuleOperandSourceType {
-  if (value === "INTERFACE_FIELD" || value === "LIST_LOOKUP_FIELD" || value === "CONST" || value === "CONTEXT") {
-    return value;
-  }
-  return "PAGE_FIELD";
-}
-
-export function normalizeLookupSourceType(value: string | undefined): RuleLookupSourceType {
   if (value === "INTERFACE_FIELD" || value === "CONST" || value === "CONTEXT") {
     return value;
   }
@@ -430,55 +385,36 @@ export function toOperandDraft(operand: RuleOperand | undefined): OperandDraft {
     return buildDefaultOperand("CONST");
   }
 
-  const displayValue = operand.displayValue ?? (operand.sourceType === "CONST" ? operand.constValue ?? operand.key : operand.key);
+  const isLegacyListLookup = operand.sourceType === "LIST_LOOKUP_FIELD";
+  const listDisplayValue =
+    operand.listBinding?.listDataName?.trim() && operand.listBinding?.resultField?.trim()
+      ? `${operand.listBinding.listDataName}.${operand.listBinding.resultField}`
+      : operand.listBinding?.listDataName?.trim() || operand.displayValue || operand.key;
+  const displayValue = isLegacyListLookup
+    ? listDisplayValue
+    : (operand.displayValue ?? (operand.sourceType === "CONST" ? operand.constValue ?? operand.key : operand.key));
   const parsedApi = parseInterfaceLabel(displayValue);
 
-  const preprocessors =
-    operand.preprocessorConfigs && operand.preprocessorConfigs.length > 0
-      ? operand.preprocessorConfigs.map((item) => ({
-          id: buildPreprocessorId(),
-          preprocessorId: item.preprocessorId,
-          params: item.params ?? ""
+  const dataProcessors =
+    operand.dataProcessorConfigs && operand.dataProcessorConfigs.length > 0
+      ? operand.dataProcessorConfigs.map((item) => ({
+          id: buildDataProcessorId(),
+          dataProcessorId: item.dataProcessorId,
+          args: item.args ?? []
         }))
-      : operand.preprocessorIds.map((id) => ({ id: buildPreprocessorId(), preprocessorId: id, params: "" }));
+      : (operand.dataProcessorIds ?? []).map((id) => ({ id: buildDataProcessorId(), dataProcessorId: id, args: [] }));
 
   const binding = operand.interfaceBinding;
   return {
-    sourceType: operand.sourceType,
+    sourceType: isLegacyListLookup ? "CONST" : operand.sourceType,
     valueType: operand.valueType ?? "STRING",
     displayValue: displayValue ?? "",
-    machineKey: operand.key ?? "",
+    machineKey: isLegacyListLookup ? (displayValue ?? "") : (operand.key ?? ""),
     interfaceId: binding?.interfaceId,
     interfaceName: binding?.interfaceName ?? parsedApi.interfaceName,
     outputPath: binding?.outputPath ?? parsedApi.outputPath,
     interfaceInputConfig: binding?.inputConfig ?? "",
-    listDataId: operand.listBinding?.listDataId,
-    listDataName: operand.listBinding?.listDataName,
-    matchColumn: operand.listBinding?.matchColumn,
-    lookupSourceType: operand.listBinding?.lookupSourceType ?? "PAGE_FIELD",
-    lookupSourceValue: operand.listBinding?.lookupSourceValue ?? "",
-    listMatchers:
-      operand.listBinding?.matchers && operand.listBinding.matchers.length > 0
-        ? operand.listBinding.matchers.map((item) => ({
-            id: buildListLookupMatcherId(),
-            matchColumn: item.matchColumn,
-            sourceType: item.sourceType,
-            sourceValue: item.sourceValue
-          }))
-        : operand.listBinding?.matchColumn
-          ? [
-              {
-                id: buildListLookupMatcherId(),
-                matchColumn: operand.listBinding.matchColumn,
-                sourceType: operand.listBinding.lookupSourceType ?? "PAGE_FIELD",
-                sourceValue: operand.listBinding.lookupSourceValue ?? ""
-              }
-            ]
-          : operand.sourceType === "LIST_LOOKUP_FIELD"
-            ? [buildDefaultListLookupMatcher()]
-            : [],
-    resultField: operand.listBinding?.resultField ?? "",
-    preprocessors
+    dataProcessors
   };
 }
 
@@ -499,13 +435,7 @@ export function hasDirtyOperandConfig(operand: OperandDraft) {
       operand.interfaceName?.trim() ||
       operand.outputPath?.trim() ||
       operand.interfaceInputConfig.trim() ||
-      operand.listDataId ||
-      operand.listDataName?.trim() ||
-      operand.matchColumn?.trim() ||
-      operand.lookupSourceValue?.trim() ||
-      operand.listMatchers.some((item) => item.matchColumn.trim() || item.sourceValue.trim()) ||
-      operand.resultField?.trim() ||
-      operand.preprocessors.length > 0
+      operand.dataProcessors.length > 0
   );
 }
 
@@ -516,9 +446,7 @@ export function resetOperandBySource(sourceType: RuleOperandSourceType, previous
     displayValue: "",
     machineKey: "",
     interfaceInputConfig: "",
-    lookupSourceType: "PAGE_FIELD",
-    listMatchers: sourceType === "LIST_LOOKUP_FIELD" ? [buildDefaultListLookupMatcher()] : [],
-    preprocessors: []
+    dataProcessors: []
   };
 }
 
@@ -535,18 +463,6 @@ export function resolveOperandSummary(operand: OperandDraft) {
       subText: operand.interfaceInputConfig.trim() ? "含入参配置" : "未配置入参"
     };
   }
-  if (operand.sourceType === "LIST_LOOKUP_FIELD") {
-    const listName = operand.listDataName?.trim() || "名单";
-    const resultField = operand.resultField?.trim();
-    const warning = !operand.listDataId || !resultField;
-    const matcherCount = operand.listMatchers.filter((item) => item.matchColumn.trim()).length;
-    return {
-      visual,
-      warning,
-      mainText: `${listName}.${resultField || "(未绑定输出字段)"}`,
-      subText: matcherCount > 0 ? `检索键 ${matcherCount} 个` : "未配置检索键"
-    };
-  }
 
   return {
     visual,
@@ -557,7 +473,7 @@ export function resolveOperandSummary(operand: OperandDraft) {
 }
 
 export function toRuleOperand(draft: OperandDraft): RuleOperand {
-  const selectedPreprocessors = draft.preprocessors.filter((item) => typeof item.preprocessorId === "number");
+  const selectedDataProcessors = draft.dataProcessors.filter((item) => typeof item.dataProcessorId === "number");
   if (draft.sourceType === "INTERFACE_FIELD") {
     const interfaceName = draft.interfaceName?.trim() || "API名称";
     const outputPath = draft.outputPath?.trim();
@@ -566,7 +482,7 @@ export function toRuleOperand(draft: OperandDraft): RuleOperand {
     return {
       sourceType: draft.sourceType,
       key: machineKey,
-      preprocessorIds: selectedPreprocessors.map((item) => item.preprocessorId as number),
+      dataProcessorIds: selectedDataProcessors.map((item) => item.dataProcessorId as number),
       valueType: draft.valueType,
       displayValue,
       interfaceBinding: {
@@ -575,45 +491,9 @@ export function toRuleOperand(draft: OperandDraft): RuleOperand {
         outputPath,
         inputConfig: draft.interfaceInputConfig.trim() || undefined
       },
-      preprocessorConfigs: selectedPreprocessors.map((item) => ({
-        preprocessorId: item.preprocessorId as number,
-        params: item.params.trim() || undefined
-      }))
-    };
-  }
-  if (draft.sourceType === "LIST_LOOKUP_FIELD") {
-    const listName = draft.listDataName?.trim() || "名单";
-    const resultField = draft.resultField?.trim();
-    const lookupSourceValue = draft.lookupSourceValue?.trim() || "";
-    const fallbackMatchColumn = draft.matchColumn?.trim();
-    const matchers = draft.listMatchers
-      .map((item) => ({
-        matchColumn: item.matchColumn.trim(),
-        sourceType: item.sourceType,
-        sourceValue: item.sourceValue.trim()
-      }))
-      .filter((item) => item.matchColumn && item.sourceValue);
-    const primaryMatcher = matchers[0];
-    const displayValue = `${listName}.${resultField || "(未绑定输出字段)"}`;
-    const machineKey = resultField || draft.machineKey.trim() || "list_result";
-    return {
-      sourceType: draft.sourceType,
-      key: machineKey,
-      preprocessorIds: selectedPreprocessors.map((item) => item.preprocessorId as number),
-      valueType: draft.valueType,
-      displayValue,
-      listBinding: {
-        listDataId: draft.listDataId,
-        listDataName: listName,
-        matchColumn: primaryMatcher?.matchColumn ?? fallbackMatchColumn ?? undefined,
-        lookupSourceType: primaryMatcher?.sourceType ?? draft.lookupSourceType ?? "PAGE_FIELD",
-        lookupSourceValue: primaryMatcher?.sourceValue ?? lookupSourceValue,
-        matchers,
-        resultField
-      },
-      preprocessorConfigs: selectedPreprocessors.map((item) => ({
-        preprocessorId: item.preprocessorId as number,
-        params: item.params.trim() || undefined
+      dataProcessorConfigs: selectedDataProcessors.map((item) => ({
+        dataProcessorId: item.dataProcessorId as number,
+        args: item.args.map((arg) => arg.trim())
       }))
     };
   }
@@ -623,13 +503,15 @@ export function toRuleOperand(draft: OperandDraft): RuleOperand {
     sourceType: draft.sourceType,
     key: value,
     constValue: draft.sourceType === "CONST" ? value : undefined,
-    preprocessorIds: selectedPreprocessors.map((item) => item.preprocessorId as number),
+    dataProcessorIds: selectedDataProcessors.map((item) => item.dataProcessorId as number),
     valueType: draft.valueType,
     displayValue: value,
-    preprocessorConfigs: selectedPreprocessors.map((item) => ({
-      preprocessorId: item.preprocessorId as number,
-      params: item.params.trim() || undefined
+    dataProcessorConfigs: selectedDataProcessors.map((item) => ({
+      dataProcessorId: item.dataProcessorId as number,
+      args: item.args.map((arg) => arg.trim())
     }))
   };
 }
+
+
 

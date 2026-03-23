@@ -19,18 +19,18 @@ import {
   Tabs,
   Tag,
   Tooltip,
-  Typography,
-  message
+  Typography
 } from "antd";
 import { DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { EffectiveConfirmModal } from "../../components/EffectiveConfirmModal";
+import { ScopeQuickFilters, type ScopeMenuOption, type ScopePageOption } from "../../components/ScopeQuickFilters";
 import { PublishContinuationAlert } from "../../components/PublishContinuationAlert";
 import { ValidationReportPanel } from "../../components/ValidationReportPanel";
-import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlockedMessage, getPublishValidationByResource } from "../../effectiveFlow";
+import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlockedMessage } from "../../effectiveFlow";
 import { lifecycleLabelMap, promptModeLabelMap } from "../../enumLabels";
 import { getOrgLabel, orgOptions } from "../../orgOptions";
 import { DEFAULT_PROMPT_TITLE } from "../../promptContent";
@@ -40,9 +40,9 @@ import { PromptRichPreview } from "./PromptRichPreview";
 import { PromptTemplateEditor } from "./PromptTemplateEditor";
 import { rulesLayoutConfig } from "./rulesLayoutConfig";
 import { RulesPageMode, useRulesPageModel } from "./useRulesPageModel";
-import { buildDefaultListLookupMatcher, FlatConditionDraft, InterfaceInputParamDraft, ListLookupMatcherDraft, LOGIC_OPERATOR_WIDTH, OperandDraft, defaultInterfaceInputBinding, deriveMachineKeyFromOutputPath, interfaceInputSourceOptions, normalizeLookupSourceType, normalizeOperator, normalizeSourceType, closeModeLabel, contextOptions, listLookupSourceOptions, operatorOptions, sourceOptions, statusColor } from "./rulesPageShared";
+import { FlatConditionDraft, InterfaceInputParamDraft, LOGIC_OPERATOR_WIDTH, OperandDraft, defaultInterfaceInputBinding, deriveMachineKeyFromOutputPath, interfaceInputSourceOptions, normalizeOperator, normalizeSourceType, closeModeLabel, operatorOptions, sourceOptions, statusColor } from "./rulesPageShared";
 import { OperandPill, InterfaceInputValueEditor } from "./rulesOperandRenderers";
-import type { LifecycleState, PublishValidationReport, RuleDefinition, RuleLogicType, ValidationIssue } from "../../types";
+import type { LifecycleState, PublishValidationReport, RuleDefinition, RuleLogicType, ShareMode, ValidationIssue } from "../../types";
 
 type RulesPageProps = {
   mode?: RulesPageMode;
@@ -88,7 +88,7 @@ const SummaryCard = styled(Card)<{ $accent: string }>`
   }
 `;
 
-const ToolbarCard = styled(Card)`
+const ToolbarSection = styled.section`
   margin-bottom: 12px;
 `;
 
@@ -204,10 +204,6 @@ function summarizeOperand(operand: OperandDraft) {
       return operand.interfaceName?.trim() && operand.outputPath?.trim()
         ? `${operand.interfaceName}.${operand.outputPath}`
         : operand.interfaceName?.trim() || "未绑定 API 输出";
-    case "LIST_LOOKUP_FIELD":
-      return operand.listDataName?.trim() && operand.resultField?.trim()
-        ? `${operand.listDataName}.${operand.resultField}`
-        : operand.listDataName?.trim() || "未绑定名单输出";
     default:
       return "未配置";
   }
@@ -274,14 +270,15 @@ export function RulesPage({
   const { hasResource, meta } = useMockSession();
   const {
     holder,
+    msgApi,
     loading,
     rows,
     templates,
     resources,
+    pageMenus,
     scenes,
-    preprocessors,
+    dataProcessors,
     interfaces,
-    listDatas,
     open,
     editing,
     ruleForm,
@@ -289,6 +286,7 @@ export function RulesPage({
     globalLogicType,
     setGlobalLogicType,
     pageFieldOptions,
+    contextVariableOptions,
     promptVariableOptions,
     conditionsDraft,
     selectedOperand,
@@ -304,9 +302,9 @@ export function RulesPage({
     removeCondition,
     selectedContext,
     changeSelectedSourceType,
-    addPreprocessorBinding,
-    updatePreprocessorBinding,
-    removePreprocessorBinding,
+    addDataProcessorBinding,
+    updateDataProcessorBinding,
+    removeDataProcessorBinding,
     saveConditionLogic,
     selectedOutputPathOptions,
     selectedInterfaceInputParams,
@@ -323,7 +321,8 @@ export function RulesPage({
     dismissPublishNotice,
     publishRuleNow,
     restoreRuleNow,
-    cloneRuleToViewerOrg
+    cloneRuleToViewerOrg,
+    reloadData
   } = useRulesPageModel(mode, {
     initialPageResourceId,
     initialTemplateRuleId,
@@ -334,7 +333,6 @@ export function RulesPage({
     viewerOperatorId: meta.operatorId
   });
   const navigate = useNavigate();
-  const [msgApi, msgHolder] = message.useMessage();
   const isTemplateMode = mode === "TEMPLATE";
   const pageTitle = isTemplateMode ? "模板复用" : "智能提示";
   const pageDescription = isTemplateMode
@@ -355,8 +353,15 @@ export function RulesPage({
   const [effectiveScopeOrgIds, setEffectiveScopeOrgIds] = useState<string[]>([]);
   const [effectiveStartAt, setEffectiveStartAt] = useState("");
   const [effectiveEndAt, setEffectiveEndAt] = useState("");
+  const [shareTargetRule, setShareTargetRule] = useState<RuleDefinition | null>(null);
+  const [shareModeDraft, setShareModeDraft] = useState<ShareMode>("PRIVATE");
+  const [shareOrgIdsDraft, setShareOrgIdsDraft] = useState<string[]>([]);
+  const [shareSubmitting, setShareSubmitting] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [listStatusFilter, setListStatusFilter] = useState<RuleListStatusFilter>("ALL");
+  const [selectedMenuId, setSelectedMenuId] = useState<number | undefined>(undefined);
+  const [selectedPageId, setSelectedPageId] = useState<number | undefined>(undefined);
+  const initializedScopeRef = useRef(false);
   const watchedPromptMode = Form.useWatch("promptMode", ruleForm);
   const watchedTemplateRuleId = Form.useWatch("templateRuleId", ruleForm);
   const watchedTitleSuffix = Form.useWatch("titleSuffix", ruleForm);
@@ -364,6 +369,10 @@ export function RulesPage({
   const watchedBodyEditorStateJson = Form.useWatch("bodyEditorStateJson", ruleForm);
   const effectiveMeta = effectiveTarget ? getEffectiveActionMeta(effectiveTarget.status) : null;
   const effectiveScopeOptions = useMemo(
+    () => orgOptions.map((item) => ({ label: item.label, value: String(item.value) })),
+    []
+  );
+  const shareScopeOptions = useMemo(
     () => orgOptions.map((item) => ({ label: item.label, value: String(item.value) })),
     []
   );
@@ -378,16 +387,6 @@ export function RulesPage({
     (effectiveMeta?.type === "DISABLE" || effectiveScopeMode !== "CUSTOM_ORGS" || effectiveScopeOrgIds.length > 0) &&
     (effectiveMeta?.type !== "PUBLISH" || Boolean(effectiveValidationReport?.pass)) &&
     !modalBlockedMessage;
-  const selectedListData = useMemo(() => {
-    if (selectedContext?.operand.sourceType !== "LIST_LOOKUP_FIELD") {
-      return null;
-    }
-    return listDatas.find((item) => item.id === selectedContext.operand.listDataId) ?? null;
-  }, [listDatas, selectedContext]);
-  const selectedListOutputOptions = useMemo(
-    () => selectedListData?.outputFields.map((item) => ({ label: item, value: item })) ?? [],
-    [selectedListData]
-  );
   const promptPreviewValues = useMemo(
     () =>
       promptVariableOptions.reduce<Record<string, string>>((acc, item) => {
@@ -410,9 +409,6 @@ export function RulesPage({
     [wizardStepIssues]
   );
   const conditionSummary = useMemo(() => {
-    if (!editing) {
-      return "新建规则保存后再补充命中条件。";
-    }
     if (logicLoading) {
       return "条件加载中...";
     }
@@ -423,12 +419,55 @@ export function RulesPage({
     const pieces = conditionsDraft.slice(0, 2).map((item) => summarizeCondition(item));
     const suffix = conditionsDraft.length > 2 ? ` 等 ${conditionsDraft.length} 条` : "";
     return `${globalLogicType === "AND" ? "满足全部条件" : "满足任一条件"}：${pieces.join(joiner)}${suffix}`;
-  }, [conditionsDraft, editing, globalLogicType, logicLoading]);
+  }, [conditionsDraft, globalLogicType, logicLoading]);
   const currentPageName =
     resources.find((item) => item.id === ruleForm.getFieldValue("pageResourceId"))?.name ?? "未绑定页面";
+  useEffect(() => {
+    if (initializedScopeRef.current || resources.length === 0 || pageMenus.length === 0) {
+      return;
+    }
+    if (typeof initialPageResourceId === "number") {
+      const presetPage = resources.find((item) => item.id === initialPageResourceId);
+      if (presetPage) {
+        setSelectedPageId(presetPage.id);
+        setSelectedMenuId(pageMenus.find((item) => item.menuCode === presetPage.menuCode)?.id);
+        initializedScopeRef.current = true;
+        return;
+      }
+    }
+    initializedScopeRef.current = true;
+  }, [initialPageResourceId, pageMenus.length, resources]);
+  const scopeMenus = useMemo<ScopeMenuOption[]>(
+    () => pageMenus.map((menu) => ({ id: menu.id, label: menu.menuName })),
+    [pageMenus]
+  );
+  const scopePages = useMemo<ScopePageOption[]>(
+    () =>
+      resources.map((page) => {
+        const matchedMenu = pageMenus.find((item) => item.menuCode === page.menuCode);
+        return {
+          id: page.id,
+          label: page.name,
+          menuId: matchedMenu?.id ?? 0,
+          menuLabel: matchedMenu?.menuName
+        };
+      }),
+    [pageMenus, resources]
+  );
+  const scopeFilteredRows = useMemo(() => {
+    let nextRows = rows;
+    if (typeof selectedPageId === "number") {
+      nextRows = nextRows.filter((row) => row.pageResourceId === selectedPageId);
+    } else if (typeof selectedMenuId === "number") {
+      const selectedMenu = pageMenus.find((item) => item.id === selectedMenuId);
+      const allowed = new Set(resources.filter((item) => item.menuCode === selectedMenu?.menuCode).map((item) => item.id));
+      nextRows = nextRows.filter((row) => allowed.has(row.pageResourceId ?? -1));
+    }
+    return nextRows;
+  }, [resources, rows, selectedMenuId, selectedPageId]);
   const keywordValue = keyword.trim().toLowerCase();
   const displayedRows = useMemo(() => {
-    return rows.filter((row) => {
+    return scopeFilteredRows.filter((row) => {
       if (listStatusFilter !== "ALL" && row.status !== listStatusFilter) {
         return false;
       }
@@ -443,7 +482,7 @@ export function RulesPage({
         sourceTemplate.includes(keywordValue)
       );
     });
-  }, [keywordValue, listStatusFilter, rows]);
+  }, [keywordValue, listStatusFilter, scopeFilteredRows]);
   const rowSummary = useMemo(() => {
     const total = rows.length;
     const draft = rows.filter((item) => item.status === "DRAFT").length;
@@ -504,39 +543,34 @@ export function RulesPage({
     return scopeOrgIds.map((orgId) => getOrgLabel(orgId)).join("、");
   };
 
-  function updateListMatchers(
-    updater:
-      | ListLookupMatcherDraft[]
-      | ((previous: ListLookupMatcherDraft[]) => ListLookupMatcherDraft[])
-  ) {
-    if (!selectedContext || selectedContext.operand.sourceType !== "LIST_LOOKUP_FIELD") {
+  function openShareSettings(row: RuleDefinition) {
+    setShareTargetRule(row);
+    setShareModeDraft(row.shareMode === "SHARED" ? "SHARED" : "PRIVATE");
+    setShareOrgIdsDraft((row.sharedOrgIds ?? []).filter((orgId) => orgId !== row.ownerOrgId));
+  }
+
+  async function submitShareSettings() {
+    if (!shareTargetRule) {
       return;
     }
-    const currentMatchers = selectedContext.operand.listMatchers;
-    const nextMatchers = typeof updater === "function" ? updater(currentMatchers) : updater;
-    updateSelectedOperand({ listMatchers: nextMatchers });
-  }
-
-  function addListMatcher() {
-    updateListMatchers((previous) => [...previous, buildDefaultListLookupMatcher()]);
-  }
-
-  function updateListMatcher(
-    matcherId: string,
-    patch: Partial<ListLookupMatcherDraft>
-  ) {
-    updateListMatchers((previous) =>
-      previous.map((item) => (item.id === matcherId ? { ...item, ...patch } : item))
-    );
-  }
-
-  function removeListMatcher(matcherId: string) {
-    updateListMatchers((previous) => {
-      if (previous.length <= 1) {
-        return [buildDefaultListLookupMatcher()];
-      }
-      return previous.filter((item) => item.id !== matcherId);
-    });
+    setShareSubmitting(true);
+    try {
+      await configCenterService.updateRuleShareConfig(
+        shareTargetRule.id,
+        {
+          shareMode: shareModeDraft,
+          sharedOrgIds: shareModeDraft === "SHARED" ? shareOrgIdsDraft : []
+        },
+        meta.operatorId
+      );
+      msgApi.success("共享设置已保存");
+      setShareTargetRule(null);
+      await reloadData();
+    } catch (error) {
+      msgApi.error(error instanceof Error ? error.message : "共享设置保存失败");
+    } finally {
+      setShareSubmitting(false);
+    }
   }
 
   useEffect(() => {
@@ -684,19 +718,11 @@ export function RulesPage({
   function resetListFilters() {
     setKeyword("");
     setListStatusFilter("ALL");
+    setSelectedMenuId(undefined);
+    setSelectedPageId(undefined);
   }
 
   function renderLogicEditorContent() {
-    if (!editing) {
-      return (
-        <CompactHint
-          tone="info"
-          title="保存规则后再补充条件"
-          description="先完成规则基础信息与提示内容；保存草稿后会在此处继续编辑命中条件。"
-        />
-      );
-    }
-
     if (logicLoading) {
       return <Alert type="info" showIcon message="条件加载中" description="正在准备当前规则的命中条件，请稍候。" />;
     }
@@ -915,7 +941,7 @@ export function RulesPage({
                       style={{ width: "100%", marginTop: 8 }}
                       placeholder="请选择上下文变量"
                       value={selectedContext.operand.displayValue || undefined}
-                      options={contextOptions.map((item) => ({ label: item, value: item }))}
+                      options={contextVariableOptions}
                       onChange={(value) =>
                         updateSelectedOperand({
                           displayValue: (value as string) ?? "",
@@ -1043,6 +1069,7 @@ export function RulesPage({
                                           param={row}
                                           binding={selectedInterfaceInputConfig[row.name] ?? defaultInterfaceInputBinding()}
                                           pageFieldOptions={pageFieldOptions}
+                                          contextVariableOptions={contextVariableOptions}
                                           updateInterfaceInputValue={updateInterfaceInputValue}
                                         />
                                       )
@@ -1062,235 +1089,69 @@ export function RulesPage({
                   </>
                 ) : null}
 
-                {selectedContext.operand.sourceType === "LIST_LOOKUP_FIELD" ? (
-                  listDatas.length === 0 ? (
-                    <Alert
-                      type="warning"
-                      showIcon
-                      message="当前没有可用名单数据"
-                      description={
-                        <Space direction="vertical" size={4}>
-                          <Typography.Text type="secondary">请先到高级配置维护名单资产，再回到规则里使用名单字段来源。</Typography.Text>
-                          <Button size="small" type="primary" onClick={() => navigate("/advanced?tab=list-data")}>
-                            去维护名单
-                          </Button>
-                        </Space>
-                      }
-                    />
-                  ) : (
-                    <>
-                      <div>
-                        <Typography.Text>名单数据</Typography.Text>
-                        <Select
-                          showSearch
-                          allowClear
-                          style={{ width: "100%", marginTop: 8 }}
-                          placeholder="请选择名单数据"
-                          value={selectedContext.operand.listDataId}
-                          optionFilterProp="label"
-                          options={listDatas.map((item) => ({
-                            label: `${item.name} / ${item.importColumns.length} 个导入字段`,
-                            value: item.id
-                          }))}
-                          onChange={(value) => {
-                            const picked = listDatas.find((item) => item.id === value);
-                            const resultField = selectedContext.operand.resultField?.trim() ?? "";
-                            const nextMatchers =
-                              selectedContext.operand.listMatchers.length > 0
-                                ? selectedContext.operand.listMatchers.map((item, index) => ({
-                                    ...item,
-                                    matchColumn:
-                                      picked?.importColumns.includes(item.matchColumn)
-                                        ? item.matchColumn
-                                        : index === 0
-                                          ? picked?.importColumns[0] ?? ""
-                                          : ""
-                                  }))
-                                : [
-                                    {
-                                      ...buildDefaultListLookupMatcher(),
-                                      matchColumn: picked?.importColumns[0] ?? ""
-                                    }
-                                  ];
-                            const nextResultField = picked?.outputFields.includes(resultField) ? resultField : "";
-                            updateSelectedOperand({
-                              listDataId: value as number | undefined,
-                              listDataName: picked?.name,
-                              matchColumn: picked?.importColumns[0] ?? "",
-                              listMatchers: nextMatchers,
-                              resultField: nextResultField,
-                              displayValue: `${picked?.name ?? "名单"}.${nextResultField || "(未绑定输出字段)"}`,
-                              machineKey: nextResultField
-                            });
-                          }}
-                        />
-                      </div>
-
-                      <PanelField label="输出字段">
-                        <Select
-                          showSearch
-                          allowClear
-                          placeholder={selectedListOutputOptions.length > 0 ? "请选择输出字段" : "当前名单未配置输出字段"}
-                          value={selectedContext.operand.resultField}
-                          options={selectedListOutputOptions}
-                          onChange={(value) => {
-                            const nextField = (value as string) ?? "";
-                            const listName = selectedContext.operand.listDataName?.trim() || "名单";
-                            updateSelectedOperand({
-                              resultField: nextField,
-                              machineKey: nextField.trim(),
-                              displayValue: `${listName}.${nextField.trim() || "(未绑定输出字段)"}`
-                            });
-                          }}
-                        />
-                      </PanelField>
-                      <CompactHint
-                        tone={selectedContext.operand.resultField?.trim() ? "success" : "warning"}
-                        title={`${selectedContext.operand.listDataName || "名单"}.${selectedContext.operand.resultField || "(未绑定输出字段)"}`}
-                        description={`已完成检索键 ${selectedContext.operand.listMatchers.filter((item) => item.matchColumn.trim() && item.sourceValue.trim()).length} / ${selectedContext.operand.listMatchers.length}`}
-                      />
-                      <Collapse
-                        size="small"
-                        items={[
-                          {
-                            key: "list-matchers",
-                            label: `检索键配置（${selectedContext.operand.listMatchers.length}）`,
-                            extra: (
-                              <Tooltip title="新增检索键">
-                                <Button
-                                  size="small"
-                                  icon={<PlusOutlined />}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    addListMatcher();
-                                  }}
-                                />
-                              </Tooltip>
-                            ),
-                            children: (
-                              <Space direction="vertical" style={{ width: "100%" }} size={8}>
-                                {selectedContext.operand.listMatchers.map((matcher, index) => (
-                                  <div
-                                    key={matcher.id}
-                                    style={{
-                                      border: "1px solid var(--color-border)",
-                                      borderRadius: 8,
-                                      padding: 10
-                                    }}
-                                  >
-                                    <Space direction="vertical" style={{ width: "100%" }} size={8}>
-                                      <Space align="center" style={{ justifyContent: "space-between", width: "100%" }}>
-                                        <Typography.Text strong>检索键 {index + 1}</Typography.Text>
-                                        <Tooltip title="删除检索键">
-                                          <Button
-                                            type="text"
-                                            danger
-                                            size="small"
-                                            icon={<DeleteOutlined />}
-                                            onClick={() => removeListMatcher(matcher.id)}
-                                          />
-                                        </Tooltip>
-                                      </Space>
-                                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(120px, 140px)", gap: 8 }}>
-                                        <Select
-                                          showSearch
-                                          allowClear
-                                          placeholder="选择匹配列"
-                                          value={matcher.matchColumn || undefined}
-                                          options={(selectedListData?.importColumns ?? []).map((item) => ({ label: item, value: item }))}
-                                          onChange={(value) => updateListMatcher(matcher.id, { matchColumn: (value as string) ?? "" })}
-                                        />
-                                        <Select
-                                          value={matcher.sourceType}
-                                          options={listLookupSourceOptions}
-                                          onChange={(value) =>
-                                            updateListMatcher(matcher.id, {
-                                              sourceType: normalizeLookupSourceType(value as string),
-                                              sourceValue: ""
-                                            })
-                                          }
-                                        />
-                                      </div>
-                                      {matcher.sourceType === "PAGE_FIELD" ? (
-                                        <Select
-                                          showSearch
-                                          allowClear
-                                          placeholder="请选择页面字段"
-                                          value={matcher.sourceValue || undefined}
-                                          optionFilterProp="label"
-                                          options={pageFieldOptions}
-                                          onChange={(value) => updateListMatcher(matcher.id, { sourceValue: (value as string) ?? "" })}
-                                        />
-                                      ) : matcher.sourceType === "CONTEXT" ? (
-                                        <Select
-                                          showSearch
-                                          allowClear
-                                          placeholder="请选择上下文变量"
-                                          value={matcher.sourceValue || undefined}
-                                          options={contextOptions.map((item) => ({ label: item, value: item }))}
-                                          onChange={(value) => updateListMatcher(matcher.id, { sourceValue: (value as string) ?? "" })}
-                                        />
-                                      ) : (
-                                        <Input
-                                          placeholder={matcher.sourceType === "CONST" ? "请输入固定值" : "请输入接口输出标识"}
-                                          value={matcher.sourceValue}
-                                          onChange={(event) => updateListMatcher(matcher.id, { sourceValue: event.target.value })}
-                                        />
-                                      )}
-                                    </Space>
-                                  </div>
-                                ))}
-                              </Space>
-                            )
-                          }
-                        ]}
-                      />
-                    </>
-                  )
-                ) : null}
-
                 <Collapse
                   size="small"
                   items={[
                     {
-                      key: "preprocessors",
-                      label: `预处理器（${selectedContext.operand.preprocessors.length}）`,
+                      key: "data-processors",
+                      label: `数据处理链（${selectedContext.operand.dataProcessors.length}）`,
                       extra: (
-                        <Tooltip title="添加预处理器">
+                        <Tooltip title="添加数据处理">
                           <Button
                             size="small"
                             icon={<PlusOutlined />}
                             onClick={(event) => {
                               event.stopPropagation();
-                              addPreprocessorBinding();
+                              addDataProcessorBinding();
                             }}
                           />
                         </Tooltip>
                       ),
                       children:
-                        selectedContext.operand.preprocessors.length === 0 ? (
-                          <Typography.Text type="secondary">暂无预处理器</Typography.Text>
+                        selectedContext.operand.dataProcessors.length === 0 ? (
+                          <Typography.Text type="secondary">暂无数据处理函数</Typography.Text>
                         ) : (
                           <Space direction="vertical" style={{ width: "100%" }}>
-                            {selectedContext.operand.preprocessors.map((binding) => (
+                            {selectedContext.operand.dataProcessors.map((binding) => (
                               <Space key={binding.id} style={{ width: "100%" }} align="start">
                                 <Select
                                   showSearch
                                   allowClear
-                                  placeholder="选择预处理器"
+                                  placeholder="选择数据处理函数"
                                   style={{ flex: 1 }}
-                                  value={binding.preprocessorId}
-                                  options={preprocessors.map((item) => ({ label: item.name, value: item.id }))}
-                                  onChange={(value) => updatePreprocessorBinding(binding.id, { preprocessorId: value as number | undefined })}
+                                  value={binding.dataProcessorId}
+                                  options={dataProcessors.map((item) => ({ label: item.name, value: item.id }))}
+                                  onChange={(value) => updateDataProcessorBinding(binding.id, { dataProcessorId: value as number | undefined })}
                                 />
-                                <Input
-                                  style={{ flex: 1 }}
-                                  placeholder="参数（可选）"
-                                  value={binding.params}
-                                  onChange={(event) => updatePreprocessorBinding(binding.id, { params: event.target.value })}
-                                />
-                                <Tooltip title="删除预处理器">
-                                  <Button danger icon={<DeleteOutlined />} onClick={() => removePreprocessorBinding(binding.id)} />
+                                <div style={{ flex: 2 }}>
+                                  {(() => {
+                                    const selectedProcessor = dataProcessors.find((item) => item.id === binding.dataProcessorId);
+                                    const argCount = Math.max(0, (selectedProcessor?.paramCount ?? 1) - 1);
+                                    if (argCount === 0) {
+                                      return <Typography.Text type="secondary">该函数仅接收 input，无额外参数</Typography.Text>;
+                                    }
+                                    return (
+                                      <Space style={{ width: "100%" }} wrap>
+                                        {Array.from({ length: argCount }, (_, argIndex) => (
+                                          <Input
+                                            key={`${binding.id}-arg-${argIndex}`}
+                                            style={{ width: 140 }}
+                                            placeholder={`参数${argIndex + 1}`}
+                                            value={binding.args[argIndex] ?? ""}
+                                            onChange={(event) => {
+                                              const nextArgs = Array.from({ length: argCount }, (_, idx) =>
+                                                idx === argIndex ? event.target.value : (binding.args[idx] ?? "")
+                                              );
+                                              updateDataProcessorBinding(binding.id, { args: nextArgs });
+                                            }}
+                                          />
+                                        ))}
+                                      </Space>
+                                    );
+                                  })()}
+                                </div>
+                                <Tooltip title="删除数据处理">
+                                  <Button danger icon={<DeleteOutlined />} onClick={() => removeDataProcessorBinding(binding.id)} />
                                 </Tooltip>
                               </Space>
                             ))}
@@ -1329,19 +1190,19 @@ export function RulesPage({
       return;
     }
 
-    setEffectiveLoading(true);
-    try {
-      const validation = await getPublishValidationByResource("RULE", target.id);
-      if (!validation) {
-        setEffectiveBlockedMessage("当前对象没有待发布版本，请先保存草稿。");
-        return;
-      }
-      setEffectiveValidationReport(validation.report);
-    } catch (error) {
-      setEffectiveBlockedMessage(error instanceof Error ? error.message : "加载生效检查结果失败");
-    } finally {
-      setEffectiveLoading(false);
-    }
+    setEffectiveValidationReport({
+      pass: true,
+      items: [
+        {
+          key: "instant_publish",
+          label: "即时生效",
+          passed: true,
+          detail: "当前模式为保存即生效，无需待发布步骤"
+        }
+      ],
+      blockingCount: 0,
+      warningCount: 0
+    });
   }
 
   async function confirmEffectiveAction() {
@@ -1361,8 +1222,6 @@ export function RulesPage({
           }
         );
         if (!success) {
-          const validation = await getPublishValidationByResource("RULE", effectiveTarget.id);
-          setEffectiveValidationReport(validation?.report ?? null);
           return;
         }
       } else {
@@ -1403,7 +1262,6 @@ export function RulesPage({
   return (
     <div>
       {holder}
-      {msgHolder}
       {!embedded ? (
         <PageHeader>
           <Typography.Title level={4}>{pageTitle}</Typography.Title>
@@ -1461,10 +1319,35 @@ export function RulesPage({
         type="info"
         style={{ marginBottom: 12 }}
         message="共享状态说明"
-        description="共享对象仅可查看；如需调整，请使用“复制为我的版本”。"
+        description="创建者可通过“共享设置”配置范围；共享对象仅可查看，如需调整请复制为我的副本。"
       />
 
-      <ToolbarCard>
+      {!isTemplateMode ? (
+        <div style={{ marginBottom: 12 }}>
+          <ScopeQuickFilters
+            menus={scopeMenus}
+            pages={scopePages}
+            selectedMenuId={selectedMenuId}
+            selectedPageId={selectedPageId}
+            onMenuChange={(menuId) => {
+              setSelectedMenuId(menuId);
+              setSelectedPageId(undefined);
+            }}
+            onPageChange={(pageId) => {
+              setSelectedPageId(pageId);
+              if (typeof pageId !== "number") {
+                return;
+              }
+              const page = scopePages.find((item) => item.id === pageId);
+              if (page) {
+                setSelectedMenuId(page.menuId);
+              }
+            }}
+          />
+        </div>
+      ) : null}
+
+      <ToolbarSection>
         <Row gutter={[10, 10]} align="middle">
           <Col xs={24} lg={10}>
             <Input.Search
@@ -1488,13 +1371,13 @@ export function RulesPage({
                 ]}
               />
               <Button onClick={resetListFilters}>重置筛选</Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} aria-label="create-rule">
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(selectedPageId)} aria-label="create-rule">
                 {createButtonLabel}
               </Button>
             </ActionBar>
           </Col>
         </Row>
-      </ToolbarCard>
+      </ToolbarSection>
 
       <Card
         extra={<Typography.Text type="secondary">当前展示 {displayedRows.length} 条</Typography.Text>}
@@ -1577,7 +1460,7 @@ export function RulesPage({
                         查看
                       </Button>
                       <Button size="small" onClick={() => void cloneRuleToViewerOrg(row)}>
-                        复制为我的版本
+                        复制为我的副本
                       </Button>
                     </Space>
                   );
@@ -1586,6 +1469,9 @@ export function RulesPage({
                   <Space>
                     <Button size="small" onClick={() => openRuleEditorTab(row, "basic")}>
                       编辑
+                    </Button>
+                    <Button size="small" onClick={() => openShareSettings(row)}>
+                      共享设置
                     </Button>
                     <Dropdown menu={{ items: buildRowMenuItems(row) }} trigger={["click"]}>
                       <Button size="small" icon={<MoreOutlined />}>
@@ -1634,7 +1520,7 @@ export function RulesPage({
               type="info"
               style={{ marginBottom: 12 }}
               message="当前对象来自共享，仅可查看"
-              description="如需修改，请使用“复制为我的版本”后在副本中编辑。"
+              description="如需修改，请使用“复制为我的副本”后在副本中编辑。"
             />
           ) : null}
 
@@ -1750,7 +1636,7 @@ export function RulesPage({
                             <Select allowClear options={scenes.map((scene) => ({ label: scene.name, value: scene.id }))} />
                           </Form.Item>
                           <Form.Item label="状态">
-                            <Tag color="default">草稿（发布后生效）</Tag>
+                            <Tag color="default">保存后立即生效</Tag>
                           </Form.Item>
                         </div>
                         <Form.Item noStyle shouldUpdate>
@@ -1869,7 +1755,7 @@ export function RulesPage({
                                   </Space>
                                 </div>
                                 <Typography.Text type="secondary">
-                                  状态：草稿（发布后生效），组织范围：{ownerOrgLabel}
+                                  状态：保存后立即生效，组织范围：{ownerOrgLabel}
                                 </Typography.Text>
                               </Space>
                             </Card>
@@ -1919,11 +1805,11 @@ export function RulesPage({
                       size="small"
                       title={isTemplateMode ? "模板条件" : "条件配置"}
                       extra={
-                        editing ? (
-                          <Space>
-                            <Tooltip title="新增条件">
-                              <Button icon={<PlusOutlined />} onClick={addCondition} disabled={editingReadonlyShared} />
-                            </Tooltip>
+                        <Space>
+                          <Tooltip title="新增条件">
+                            <Button icon={<PlusOutlined />} onClick={addCondition} disabled={editingReadonlyShared} />
+                          </Tooltip>
+                          {editing ? (
                             <Button
                               type="primary"
                               loading={savingQuery}
@@ -1932,8 +1818,8 @@ export function RulesPage({
                             >
                               保存条件逻辑
                             </Button>
-                          </Space>
-                        ) : null
+                          ) : null}
+                        </Space>
                       }
                     >
                       {renderLogicEditorContent()}
@@ -1968,13 +1854,52 @@ export function RulesPage({
                 ) : null}
                 {editingReadonlyShared ? (
                   <Button type="primary" onClick={() => editing && void cloneRuleToViewerOrg(editing)}>
-                    复制为我的版本
+                    复制为我的副本
                   </Button>
                 ) : null}
               </Space>
             </Space>
           </StickyEditorFooter>
         </Form>
+      </Modal>
+
+      <Modal
+        title={shareTargetRule ? `共享设置：${shareTargetRule.name}` : "共享设置"}
+        open={Boolean(shareTargetRule)}
+        onCancel={() => setShareTargetRule(null)}
+        onOk={() => void submitShareSettings()}
+        confirmLoading={shareSubmitting}
+        okText="保存"
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Text type="secondary">
+            创建者可设置共享范围；被共享方仅可查看并复制副本。
+          </Typography.Text>
+          <PanelField label="共享模式">
+            <Segmented
+              value={shareModeDraft}
+              options={[
+                { label: "私有", value: "PRIVATE" },
+                { label: "共享", value: "SHARED" }
+              ]}
+              onChange={(value) => setShareModeDraft(value as ShareMode)}
+            />
+          </PanelField>
+          {shareModeDraft === "SHARED" ? (
+            <PanelField label="共享机构">
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="请选择可查看的机构"
+                value={shareOrgIdsDraft}
+                options={shareScopeOptions.filter((item) => item.value !== shareTargetRule?.ownerOrgId)}
+                onChange={(value) => setShareOrgIdsDraft(value as string[])}
+              />
+            </PanelField>
+          ) : null}
+        </Space>
       </Modal>
 
       {effectiveTarget && effectiveMeta ? (

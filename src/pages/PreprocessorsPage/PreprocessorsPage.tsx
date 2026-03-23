@@ -1,12 +1,11 @@
-import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
-import { OrgSelect, OrgText } from "../../components/DirectoryFields";
-import { lifecycleLabelMap, lifecycleOptions } from "../../enumLabels";
+import { lifecycleLabelMap } from "../../enumLabels";
 import { configCenterService } from "../../services/configCenterService";
-import type { LifecycleState, PreprocessorDefinition } from "../../types";
+import type { DataProcessorDefinition, LifecycleState } from "../../types";
 
-type PreprocessorForm = Omit<PreprocessorDefinition, "id" | "updatedAt" | "usedByCount">;
+type DataProcessorForm = Pick<DataProcessorDefinition, "name" | "paramCount" | "functionCode" | "status">;
 
 const statusColor: Record<LifecycleState, string> = {
   DRAFT: "default",
@@ -15,31 +14,29 @@ const statusColor: Record<LifecycleState, string> = {
   EXPIRED: "red"
 };
 
-const typeLabel: Record<PreprocessorDefinition["processorType"], string> = {
-  BUILT_IN: "内置",
-  SCRIPT: "脚本"
-};
+const dataProcessorStatusOptions = [
+  { label: lifecycleLabelMap.ACTIVE, value: "ACTIVE" as const },
+  { label: lifecycleLabelMap.DISABLED, value: "DISABLED" as const }
+];
 
-const categoryLabel: Record<PreprocessorDefinition["category"], string> = {
-  STRING: "字符串",
-  NUMBER: "数值",
-  DATE: "日期",
-  JSON: "JSON"
-};
+function buildTransformTemplate(paramCount: number) {
+  const safeCount = Number.isInteger(paramCount) && paramCount > 0 ? paramCount : 1;
+  const params = ["input", ...Array.from({ length: Math.max(0, safeCount - 1) }, (_, i) => `arg${i + 1}`)];
+  return `function transform(${params.join(", ")}) {\n  return input;\n}`;
+}
 
 export function PreprocessorsPage({ embedded = false }: { embedded?: boolean }) {
   const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState<PreprocessorDefinition[]>([]);
+  const [rows, setRows] = useState<DataProcessorDefinition[]>([]);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<PreprocessorDefinition | null>(null);
-  const [form] = Form.useForm<PreprocessorForm>();
-  const watchedProcessorType = Form.useWatch("processorType", form);
+  const [editing, setEditing] = useState<DataProcessorDefinition | null>(null);
+  const [form] = Form.useForm<DataProcessorForm>();
   const [msgApi, holder] = message.useMessage();
 
   async function loadData() {
     setLoading(true);
     try {
-      const data = await configCenterService.listPreprocessors();
+      const data = await configCenterService.listDataProcessors();
       setRows(data);
     } finally {
       setLoading(false);
@@ -54,36 +51,32 @@ export function PreprocessorsPage({ embedded = false }: { embedded?: boolean }) 
     setEditing(null);
     form.setFieldsValue({
       name: "",
-      processorType: "BUILT_IN",
-      category: "STRING",
-      status: "DRAFT",
-      ownerOrgId: "branch-east",
-      scriptContent: ""
+      paramCount: 1,
+      functionCode: buildTransformTemplate(1),
+      status: "ACTIVE"
     });
     setOpen(true);
   }
 
-  function openEdit(row: PreprocessorDefinition) {
+  function openEdit(row: DataProcessorDefinition) {
     setEditing(row);
     form.setFieldsValue({
       name: row.name,
-      processorType: row.processorType,
-      category: row.category,
-      status: row.status,
-      ownerOrgId: row.ownerOrgId,
-      scriptContent: row.scriptContent ?? ""
+      paramCount: row.paramCount,
+      functionCode: row.functionCode,
+      status: row.status === "ACTIVE" ? "ACTIVE" : "DISABLED"
     });
     setOpen(true);
   }
 
   async function submit() {
     const values = await form.validateFields();
-    await configCenterService.upsertPreprocessor({
+    await configCenterService.upsertDataProcessor({
       ...values,
       id: editing?.id ?? Date.now(),
       usedByCount: editing?.usedByCount ?? 0
     });
-    msgApi.success(editing ? "数据转换规则已更新，已进入待发布列表" : "数据转换规则已创建，已进入待发布列表");
+    msgApi.success(editing ? "数据处理函数已更新" : "数据处理函数已创建");
     setOpen(false);
     await loadData();
   }
@@ -103,9 +96,9 @@ export function PreprocessorsPage({ embedded = false }: { embedded?: boolean }) 
     });
   }
 
-  async function switchStatus(item: PreprocessorDefinition) {
+  async function switchStatus(item: DataProcessorDefinition) {
     const next: LifecycleState = item.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
-    await configCenterService.updatePreprocessorStatus(item.id, next);
+    await configCenterService.updateDataProcessorStatus(item.id, next);
     msgApi.success(`状态已切换为 ${next}`);
     await loadData();
   }
@@ -115,43 +108,32 @@ export function PreprocessorsPage({ embedded = false }: { embedded?: boolean }) 
       {holder}
       {!embedded ? (
         <>
-          <Typography.Title level={4}>数据转换规则</Typography.Title>
+          <Typography.Title level={4}>数据处理函数</Typography.Title>
           <Typography.Paragraph type="secondary">
-            这是高级维护区，用来统一管理规则和作业共用的数据转换逻辑。优先使用内置能力，脚本方式仅作受控增强。
+            在这里维护规则与作业可复用的数据处理函数。统一使用标准 JS 函数 `transform(input, ...args)`。
           </Typography.Paragraph>
         </>
       ) : null}
 
       <Card
         extra={
-          <Button type="primary" icon={<PlusOutlined />} aria-label="create-preprocessor" title="新建预处理器" onClick={openCreate} />
+          <Button type="primary" icon={<PlusOutlined />} aria-label="create-data-processor" title="新建数据处理函数" onClick={openCreate} />
         }
       >
-        <Table<PreprocessorDefinition>
+        <Table<DataProcessorDefinition>
           rowKey="id"
           loading={loading}
           dataSource={rows}
-          pagination={{ pageSize: 6, showSizeChanger: true, pageSizeOptions: ["6", "10", "20"] }}
+          pagination={{ pageSize: 8, showSizeChanger: true, pageSizeOptions: ["8", "16", "30"] }}
           columns={[
             { title: "名称", dataIndex: "name", width: 220 },
-            {
-              title: "类型",
-              width: 100,
-              render: (_, row) => <Tag color={row.processorType === "SCRIPT" ? "volcano" : "blue"}>{typeLabel[row.processorType]}</Tag>
-            },
-            {
-              title: "分类",
-              width: 100,
-              render: (_, row) => <Tag>{categoryLabel[row.category]}</Tag>
-            },
-            { title: "组织范围", dataIndex: "ownerOrgId", width: 140, render: (value: string) => <OrgText value={value} /> },
+            { title: "参数个数", dataIndex: "paramCount", width: 110 },
             { title: "被引用次数", dataIndex: "usedByCount", width: 110 },
             {
               title: "状态",
               width: 100,
               render: (_, row) => <Tag color={statusColor[row.status]}>{lifecycleLabelMap[row.status]}</Tag>
             },
-            { title: "更新时间", dataIndex: "updatedAt", width: 180 },
             {
               title: "操作",
               width: 220,
@@ -161,7 +143,7 @@ export function PreprocessorsPage({ embedded = false }: { embedded?: boolean }) 
                     编辑
                   </Button>
                   <Popconfirm
-                    title={row.status === "ACTIVE" ? "确认停用该预处理器？" : "确认启用该预处理器？"}
+                    title={row.status === "ACTIVE" ? "确认停用该数据处理函数？" : "确认启用该数据处理函数？"}
                     onConfirm={() => void switchStatus(row)}
                   >
                     <Button size="small">{row.status === "ACTIVE" ? "停用" : "启用"}</Button>
@@ -174,53 +156,60 @@ export function PreprocessorsPage({ embedded = false }: { embedded?: boolean }) 
       </Card>
 
       <Modal
-        title={editing ? "编辑预处理器" : "新建预处理器"}
+        title={editing ? "编辑数据处理函数" : "新建数据处理函数"}
         open={open}
         onCancel={closeModal}
         onOk={() => void submit()}
         destroyOnClose
+        width={860}
       >
         <Form form={form} layout="vertical">
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-            标识由系统自动生成；被引用次数会自动统计，你只需维护转换逻辑本身。
-          </Typography.Paragraph>
           <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]}>
             <Input maxLength={128} />
           </Form.Item>
-          <Form.Item name="processorType" label="类型" rules={[{ required: true, message: "请选择类型" }]}>
-            <Select options={[{ label: "内置", value: "BUILT_IN" }, { label: "脚本", value: "SCRIPT" }]} />
+          <Form.Item name="paramCount" label="参数个数（含 input）" rules={[{ required: true, message: "请输入参数个数" }]}>
+            <InputNumber min={1} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="category" label="分类" rules={[{ required: true, message: "请选择分类" }]}>
-            <Select
-              options={[
-                { label: "字符串", value: "STRING" },
-                { label: "数值", value: "NUMBER" },
-                { label: "日期", value: "DATE" },
-                { label: "JSON", value: "JSON" }
-              ]}
+          <Form.Item noStyle shouldUpdate={(prev, current) => prev.paramCount !== current.paramCount}>
+            {() => (
+              <Button
+                size="small"
+                style={{ marginBottom: 10 }}
+                onClick={() => {
+                  const paramCount = form.getFieldValue("paramCount") ?? 1;
+                  form.setFieldValue("functionCode", buildTransformTemplate(Number(paramCount)));
+                }}
+              >
+                生成函数模板
+              </Button>
+            )}
+          </Form.Item>
+          <Form.Item
+            name="functionCode"
+            label="函数代码"
+            rules={[
+              { required: true, message: "请输入函数代码" },
+              { pattern: /^function\s+transform\s*\(/, message: "请使用 function transform(...) 声明函数" }
+            ]}
+          >
+            <Input.TextArea
+              rows={10}
+              placeholder="function transform(input, arg1) { return input; }"
+              style={{ fontFamily: "Consolas, 'Courier New', monospace" }}
             />
           </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="参数说明"
+            description="第一个参数固定为 input。其余参数会在条件配置中按参数个数自动生成输入框。"
+          />
           <Form.Item name="status" label="状态" rules={[{ required: true, message: "请选择状态" }]}>
-            <Select options={lifecycleOptions} />
+            <Select options={dataProcessorStatusOptions} />
           </Form.Item>
-          <Form.Item name="ownerOrgId" label="组织范围" rules={[{ required: true, message: "请选择组织" }]}>
-            <OrgSelect />
-          </Form.Item>
-
-          {watchedProcessorType === "SCRIPT" ? (
-            <Form.Item name="scriptContent" label="脚本内容" rules={[{ required: true, message: "脚本类型需要填写脚本内容" }]}>
-              <Input.TextArea
-                rows={10}
-                placeholder="请输入脚本内容（原型态）"
-                style={{ fontFamily: "Consolas, 'Courier New', monospace" }}
-              />
-            </Form.Item>
-          ) : (
-            <Alert type="info" showIcon message="内置类型无需脚本内容" description="当前将使用平台内置实现。" />
-          )}
         </Form>
       </Modal>
     </div>
   );
 }
-

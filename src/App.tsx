@@ -3,14 +3,8 @@ import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 
-const DashboardPage = lazy(() =>
-  import("./pages/DashboardPage/DashboardPage").then((m) => ({ default: m.DashboardPage }))
-);
 const PageManagementPage = lazy(() =>
   import("./pages/PageManagementPage/PageManagementPage").then((m) => ({ default: m.PageManagementPage }))
-);
-const PageResourcesPage = lazy(() =>
-  import("./pages/PageResourcesPage/PageResourcesPage").then((m) => ({ default: m.PageResourcesPage }))
 );
 const PromptsPage = lazy(() =>
   import("./pages/PromptsPage/PromptsPage").then((m) => ({ default: m.PromptsPage }))
@@ -21,49 +15,33 @@ const JobScenesPage = lazy(() =>
 const InterfacesPage = lazy(() =>
   import("./pages/InterfacesPage/InterfacesPage").then((m) => ({ default: m.InterfacesPage }))
 );
-const AuditMetricsPage = lazy(() =>
-  import("./pages/AuditMetricsPage/AuditMetricsPage").then((m) => ({ default: m.AuditMetricsPage }))
-);
 const RunRecordsPage = lazy(() =>
   import("./pages/RunRecordsPage/RunRecordsPage").then((m) => ({ default: m.RunRecordsPage }))
 );
+const RolesPage = lazy(() =>
+  import("./pages/RolesPage/RolesPage").then((m) => ({ default: m.RolesPage }))
+);
+const PublicFieldsPage = lazy(() =>
+  import("./pages/PublicFieldsPage/PublicFieldsPage").then((m) => ({ default: m.PublicFieldsPage }))
+);
 const AdvancedConfigPage = lazy(() =>
   import("./pages/AdvancedConfigPage/AdvancedConfigPage").then((m) => ({ default: m.AdvancedConfigPage }))
-);
-const PermissionResourcesPage = lazy(() =>
-  import("./pages/PermissionResourcesPage/PermissionResourcesPage").then((m) => ({ default: m.PermissionResourcesPage }))
-);
-const SdkVersionCenterPage = lazy(() =>
-  import("./pages/SdkVersionCenterPage/SdkVersionCenterPage").then((m) => ({ default: m.SdkVersionCenterPage }))
 );
 export default function App() {
   return (
     <AppShell>
       <Suspense fallback={<Spin style={{ margin: "24px 0" }} />}>
         <Routes>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<Navigate to="/page-management" replace />} />
           <Route path="/page-management" element={<PageManagementPage />} />
           <Route path="/prompts" element={<PromptsPage />} />
           <Route path="/jobs" element={<JobScenesPage />} />
           <Route path="/interfaces" element={<InterfacesPage />} />
-          <Route path="/stats" element={<AuditMetricsPage />} />
           <Route path="/run-records" element={<RunRecordsPage />} />
+          <Route path="/roles" element={<RolesPage />} />
+          <Route path="/public-fields" element={<PublicFieldsPage />} />
           <Route path="/advanced" element={<AdvancedConfigPage />} />
-          <Route path="/permission-resources" element={<PermissionResourcesPage />} />
-          <Route path="/sdk-version-center" element={<SdkVersionCenterPage />} />
-
-          <Route path="/page-resources" element={<PageResourcesPage />} />
-          <Route path="/page-activation" element={<Navigate to="/page-management" replace />} />
-          <Route path="/rules" element={<Navigate to="/prompts" replace />} />
-          <Route path="/rule-templates" element={<Navigate to="/prompts" replace />} />
-          <Route path="/job-scenes" element={<Navigate to="/jobs" replace />} />
-          <Route path="/publish" element={<Navigate to="/" replace />} />
-          <Route path="/audit-metrics" element={<Navigate to="/stats" replace />} />
-          <Route path="/preprocessors" element={<Navigate to="/advanced" replace />} />
-          <Route path="/roles" element={<Navigate to="/advanced" replace />} />
-          <Route path="/permission-resources-legacy" element={<Navigate to="/advanced?tab=permission-resources" replace />} />
-          <Route path="/list-data" element={<Navigate to="/advanced?tab=list-data" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/page-management" replace />} />
         </Routes>
       </Suspense>
     </AppShell>

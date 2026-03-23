@@ -9,8 +9,7 @@ const baseOperand: OperandDraft = {
   displayValue: "测试值",
   machineKey: "测试值",
   interfaceInputConfig: "",
-  listMatchers: [],
-  preprocessors: []
+  dataProcessors: []
 };
 
 describe("OperandPill layout", () => {

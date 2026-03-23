@@ -15,32 +15,34 @@ import type {
   JobSceneDefinition,
   JobScenePreviewField,
   LifecycleState,
-  ListDataDefinition,
   PageElement,
   PageFieldBinding,
+  PageMenu,
   PageResource,
   RuleDefinition,
   SaveValidationReport
 } from "../../types";
 import {
-  buildExecutionMode,
   buildFormValuesFromNode,
   buildFlowFromNodeRows,
   buildNodeConfigFromForm,
   deriveNodeOutputReferenceOptions,
-  derivePreviewBeforeExecute,
   deriveOrderedNodeIds,
   executionLabel,
+  formatFlowNodeLabel,
+  formatFlowNodeTypeLabel,
   FlowEdge,
   FlowNode,
   NodeDetailForm,
   getDefaultNodeConfig,
   getFlowNodeStyle,
   getFlowPosition,
+  isApiOutputSelectionRequired,
   mergeFlowNextNodeIds,
   mergeFlowPosition,
   parseApiCallInputParams,
   parseApiCallOutputOptions,
+  resolvePersistedExecutionMode,
   nodeLibrary,
   nodeTypeLabel,
   SceneForm,
@@ -58,13 +60,6 @@ type JobScenesPageModelOptions = {
   viewerOperatorId?: string;
 };
 
-function toSceneDraftPayload(row: JobSceneDefinition): Omit<JobSceneDefinition, "updatedAt"> & { updatedAt?: string } {
-  return {
-    ...row,
-    status: "DRAFT"
-  };
-}
-
 export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
   const screens = Grid.useBreakpoint();
   const drawerWidth = getRightOverlayDrawerWidth(Boolean(screens.lg));
@@ -72,9 +67,9 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<JobSceneDefinition[]>([]);
   const [resources, setResources] = useState<PageResource[]>([]);
+  const [pageMenus, setPageMenus] = useState<PageMenu[]>([]);
   const [rules, setRules] = useState<RuleDefinition[]>([]);
   const [interfaces, setInterfaces] = useState<InterfaceDefinition[]>([]);
-  const [listDatas, setListDatas] = useState<ListDataDefinition[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<JobSceneDefinition | null>(null);
@@ -109,7 +104,6 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
 
   const [nodeDetailForm] = Form.useForm<NodeDetailForm>();
   const watchedNodeType = Form.useWatch("nodeType", nodeDetailForm);
-  const watchedNodeListDataId = Form.useWatch("listDataId", nodeDetailForm);
   const watchedApiInterfaceId = Form.useWatch("apiInterfaceId", nodeDetailForm);
   const watchedSceneValues = Form.useWatch([], form) as Partial<SceneForm> | undefined;
   const watchedNodeValues = Form.useWatch([], nodeDetailForm) as Partial<NodeDetailForm> | undefined;
@@ -122,10 +116,6 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
   const nodeOutputReferenceOptions = useMemo(
     () => deriveNodeOutputReferenceOptions(nodeRows, selectedNode?.id, flowEdges),
     [flowEdges, nodeRows, selectedNode?.id]
-  );
-  const selectedNodeListData = useMemo(
-    () => listDatas.find((item) => item.id === watchedNodeListDataId) ?? null,
-    [listDatas, watchedNodeListDataId]
   );
   const selectedApiInterface = useMemo(
     () => interfaces.find((item) => item.id === watchedApiInterfaceId) ?? null,
@@ -186,12 +176,12 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
   async function loadData() {
     setLoading(true);
     try {
-      const [sceneData, resourceData, ruleData, interfaceRows, listDataRows] = await Promise.all([
+      const [sceneData, resourceData, menuData, ruleData, interfaceRows] = await Promise.all([
         configCenterService.listJobScenes({ viewerOrgId: options.viewerOrgId }),
         configCenterService.listPageResources(),
+        configCenterService.listPageMenus(),
         configCenterService.listRules({ viewerOrgId: options.viewerOrgId }),
-        configCenterService.listInterfaces(),
-        configCenterService.listListDatas()
+        configCenterService.listInterfaces()
       ]);
       const sceneNodeCounts = await Promise.all(
         sceneData.map(async (scene) => ({
@@ -199,16 +189,18 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
           count: (await workflowService.listJobNodes(scene.id)).length
         }))
       );
+      const pageResourceNameMap = new Map(resourceData.map((resource) => [resource.id, resource.name]));
       setRows(
         sceneData.map((scene) => ({
           ...scene,
+          pageResourceName: scene.pageResourceName?.trim() || pageResourceNameMap.get(scene.pageResourceId) || `页面#${scene.pageResourceId}`,
           nodeCount: sceneNodeCounts.find((item) => item.sceneId === scene.id)?.count ?? 0
         }))
       );
       setResources(resourceData);
+      setPageMenus(menuData);
       setRules(ruleData);
       setInterfaces(interfaceRows);
-      setListDatas(listDataRows);
     } finally {
       setLoading(false);
     }
@@ -321,7 +313,7 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
 
   function openCreate(preset?: { pageResourceId?: number; executionMode?: ExecutionMode; name?: string }) {
     const pickedExecutionMode: ExecutionMode =
-      preset?.executionMode && ["AUTO_WITHOUT_PROMPT", "AUTO_AFTER_PROMPT", "PREVIEW_THEN_EXECUTE", "FLOATING_BUTTON"].includes(preset.executionMode)
+      preset?.executionMode && ["AUTO_WITHOUT_PROMPT", "AUTO_AFTER_PROMPT", "FLOATING_BUTTON"].includes(preset.executionMode)
         ? preset.executionMode
         : "AUTO_AFTER_PROMPT";
     const pickedPageId =
@@ -332,9 +324,7 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
       name: preset?.name ?? "",
       pageResourceId: pickedPageId,
       executionMode: pickedExecutionMode,
-      previewBeforeExecute: derivePreviewBeforeExecute({
-        executionMode: pickedExecutionMode
-      }),
+      previewBeforeExecute: false,
       floatingButtonEnabled: pickedExecutionMode === "FLOATING_BUTTON",
       floatingButtonLabel: DEFAULT_FLOATING_BUTTON_LABEL,
       floatingButtonX: DEFAULT_FLOATING_BUTTON_X,
@@ -354,8 +344,8 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     const values: SceneForm = {
       name: row.name,
       pageResourceId: row.pageResourceId,
-      executionMode: row.executionMode,
-      previewBeforeExecute: derivePreviewBeforeExecute(row),
+      executionMode: row.executionMode === "PREVIEW_THEN_EXECUTE" ? "AUTO_AFTER_PROMPT" : row.executionMode,
+      previewBeforeExecute: false,
       floatingButtonEnabled: row.floatingButtonEnabled ?? row.executionMode === "FLOATING_BUTTON",
       floatingButtonLabel: row.floatingButtonLabel ?? DEFAULT_FLOATING_BUTTON_LABEL,
       floatingButtonX: row.floatingButtonX ?? DEFAULT_FLOATING_BUTTON_X,
@@ -411,22 +401,24 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     }
     const sceneId = editing?.id ?? Date.now() + Math.floor(Math.random() * 1000);
     const persistedNodeCount = rows.find((item) => item.id === sceneId)?.nodeCount ?? editing?.nodeCount ?? 0;
-    const nextExecutionMode = buildExecutionMode(
-      values.executionMode === "FLOATING_BUTTON" ? "BUTTON" : "AUTO",
-      Boolean(values.previewBeforeExecute)
+    const nextExecutionMode = resolvePersistedExecutionMode(
+      values.executionMode ?? "AUTO_AFTER_PROMPT",
+      false
     );
     const result = await configCenterService.saveJobSceneDraft({
       id: sceneId,
       ...values,
+      ownerOrgId: editing?.ownerOrgId ?? options.viewerOrgId ?? undefined,
+      shareMode: editing?.shareMode ?? "PRIVATE",
+      sharedOrgIds: editing?.sharedOrgIds ?? [],
       status: "DRAFT",
       executionMode: nextExecutionMode,
-      previewBeforeExecute: Boolean(values.previewBeforeExecute),
+      previewBeforeExecute: false,
       floatingButtonEnabled:
         values.floatingButtonEnabled === undefined
           ? nextExecutionMode === "FLOATING_BUTTON"
           : Boolean(values.floatingButtonEnabled),
       nodeCount: persistedNodeCount,
-      currentVersion: editing?.currentVersion ?? 1,
       pageResourceName: resource.name,
       floatingButtonLabel: values.floatingButtonLabel?.trim() || DEFAULT_FLOATING_BUTTON_LABEL,
       floatingButtonX: typeof values.floatingButtonX === "number" ? values.floatingButtonX : DEFAULT_FLOATING_BUTTON_X,
@@ -438,34 +430,22 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
       msgApi.error(result.report.summary);
       return;
     }
+    const savedSceneId = result.data?.id ?? sceneId;
+    await configCenterService.updateJobSceneStatus(savedSceneId, "ACTIVE");
     msgApi.success(
       result.report.warningCount > 0
-        ? `场景已保存草稿，另有 ${result.report.warningCount} 个待处理项`
+        ? `场景已保存并生效，另有 ${result.report.warningCount} 个提醒建议处理`
         : editing
-          ? "场景已更新，并已进入待发布列表"
-          : "场景已创建，并已进入待发布列表"
+          ? "场景已更新并立即生效"
+          : "场景已创建并立即生效"
     );
-    setPublishNotice({
-      objectName: result.data?.name ?? values.name,
-      warningCount: result.report.warningCount,
-      resourceId: result.data?.id ?? sceneId
-    });
+    setPublishNotice(null);
     closeSceneModalDirectly();
     await loadData();
   }
 
   async function publishSceneNow(sceneId: number, sceneName: string, effectiveOrgIds: string[] = []): Promise<boolean> {
-    const pendingRows = await configCenterService.listPendingItems();
-    const pending = pendingRows.find((item) => item.resourceType === "JOB_SCENE" && item.resourceId === sceneId);
-    if (!pending) {
-      msgApi.warning("当前作业场景没有可生效版本，请先保存草稿。");
-      return false;
-    }
-    const result = await configCenterService.publishPendingItem(pending.id, "person-business-manager", effectiveOrgIds);
-    if (!result.success) {
-      msgApi.error("生效未通过，请先处理阻断项后再试。");
-      return false;
-    }
+    await configCenterService.updateJobSceneStatus(sceneId, "ACTIVE");
     msgApi.success(`已生效：${sceneName}（${effectiveOrgIds.length > 0 ? effectiveOrgIds.map((orgId) => getOrgLabel(orgId)).join("、") : "全部机构"}）`);
     await loadData();
     return true;
@@ -475,12 +455,7 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     row: JobSceneDefinition,
     effectiveOrgIds: string[] = []
   ): Promise<boolean> {
-    const draftResult = await configCenterService.saveJobSceneDraft(toSceneDraftPayload(row));
-    if (!draftResult.success || !draftResult.data) {
-      msgApi.error(draftResult.report.summary);
-      return false;
-    }
-    return publishSceneNow(draftResult.data.id, draftResult.data.name, effectiveOrgIds);
+    return publishSceneNow(row.id, row.name, effectiveOrgIds);
   }
 
   async function publishNoticeNow() {
@@ -497,12 +472,6 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     const next: LifecycleState = item.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
     await configCenterService.updateJobSceneStatus(item.id, next);
     msgApi.success(`场景状态已切换为 ${next}`);
-    await loadData();
-  }
-
-  async function confirmRisk(item: JobSceneDefinition) {
-    await configCenterService.confirmJobSceneRisk(item.id);
-    msgApi.success(`风险已确认: ${item.name}`);
     await loadData();
   }
 
@@ -612,23 +581,21 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     if (!builderScene) {
       return;
     }
+    if (nodeType === "list_lookup") {
+      msgApi.warning("名单检索节点已下线，无法继续添加");
+      return;
+    }
 
     const nextOrder = (nodeRows[nodeRows.length - 1]?.orderNo ?? 0) + 1;
-    const id = Date.now() + Math.floor(Math.random() * 1000);
     const maxX = flowNodes.length > 0 ? Math.max(...flowNodes.map((item) => item.position.x)) : 0;
     const autoPosition = { x: Math.max(80, maxX + 260), y: 120 + ((nextOrder - 1) % 3) * 120 };
     const position = dropPosition
       ? { x: Math.round(Math.max(40, dropPosition.x)), y: Math.round(Math.max(40, dropPosition.y)) }
       : autoPosition;
-    const defaultListData = listDatas[0];
     const configJson = mergeFlowPosition(
       JSON.stringify(
         getDefaultNodeConfig(nodeType, {
           field: pageFieldOptions[0]?.value,
-          listDataId: defaultListData?.id,
-          matchColumn: defaultListData?.importColumns[0],
-          inputSource: defaultListData?.importColumns[0],
-          resultKeys: (defaultListData?.outputFields?.length ? defaultListData.outputFields : defaultListData?.importColumns ?? []).slice(0, 1),
           target: pageFieldOptions[0]?.value
         })
       ),
@@ -636,7 +603,6 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     );
 
     const savedNode = await workflowService.upsertJobNode({
-      id,
       sceneId: builderScene.id,
       nodeType,
       name: `${nodeTypeLabel[nodeType]}${nextOrder}`,
@@ -652,7 +618,8 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
         id: String(savedNode.id),
         type: "jobNode",
         data: {
-          label: `${savedNode.orderNo}. ${savedNode.name}`,
+          label: formatFlowNodeLabel(savedNode.orderNo, savedNode.name),
+          typeLabel: formatFlowNodeTypeLabel(savedNode.nodeType),
           nodeType: savedNode.nodeType,
           enabled: savedNode.enabled
         },
@@ -746,7 +713,7 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
             }
           }
           const outputPaths = (values.apiOutputPaths ?? []).filter((item) => item.trim());
-          if (outputPaths.length === 0) {
+          if (isApiOutputSelectionRequired(outputOptions.length) && outputPaths.length === 0) {
             nextIssues.push(createFieldIssue({ section: "node", field: "apiOutputPaths", label: "接口出参", message: "请至少选择一个出参字段" }));
           } else if (outputPaths.some((item) => !outputPathSet.has(item))) {
             nextIssues.push(createFieldIssue({ section: "node", field: "apiOutputPaths", label: "接口出参", message: "存在失效出参，请重新选择" }));
@@ -755,42 +722,14 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
       }
     }
     if (values.nodeType === "list_lookup") {
-      const selectedListData = values.listDataId ? listDatas.find((item) => item.id === values.listDataId) : undefined;
-      const availableOutputFields = selectedListData
-        ? (selectedListData.outputFields.length > 0 ? selectedListData.outputFields : selectedListData.importColumns)
-        : [];
-      if (!values.listDataId) {
-        nextIssues.push(createFieldIssue({ section: "node", field: "listDataId", label: "名单数据", message: "请选择名单数据" }));
-      } else if (!listDatas.some((item) => item.id === values.listDataId)) {
-        nextIssues.push(createFieldIssue({ section: "node", field: "listDataId", label: "名单数据", message: "所选名单不存在" }));
-      }
-      if (!values.matchColumn?.trim()) {
-        nextIssues.push(createFieldIssue({ section: "node", field: "matchColumn", label: "匹配字段", message: "请选择匹配字段" }));
-      }
-      if (!values.inputSource?.trim()) {
-        nextIssues.push(createFieldIssue({ section: "node", field: "inputSource", label: "输入来源", message: "请输入输入来源" }));
-      } else if (values.inputSourceType === "REFERENCE" && !/^\{\{[a-zA-Z0-9_]+\}\}$/.test(values.inputSource.trim())) {
-        nextIssues.push(
-          createFieldIssue({
-            section: "node",
-            field: "inputSource",
-            label: "输入来源",
-            message: "引用模式下请选择有效变量（格式：{{node_xxx}}）"
-          })
-        );
-      }
-      const resultKeys = Array.from(
-        new Set(
-          (values.resultKeys ?? (values.resultKey ? [values.resultKey] : []))
-            .map((item) => item.trim())
-            .filter(Boolean)
-        )
+      nextIssues.push(
+        createFieldIssue({
+          section: "node",
+          field: "nodeType",
+          label: "节点类型",
+          message: "名单检索节点已下线，请删除该节点并改用接口调用或脚本处理节点"
+        })
       );
-      if (resultKeys.length === 0) {
-        nextIssues.push(createFieldIssue({ section: "node", field: "resultKeys", label: "输出字段", message: "请至少选择一个输出字段" }));
-      } else if (availableOutputFields.length > 0 && resultKeys.some((item) => !availableOutputFields.includes(item))) {
-        nextIssues.push(createFieldIssue({ section: "node", field: "resultKeys", label: "输出字段", message: "存在失效输出字段，请重新选择" }));
-      }
     }
     if (values.nodeType === "js_script") {
       if (!values.scriptCode?.trim()) {
@@ -923,10 +862,11 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     };
     const flowNode = flowNodes.find((item) => item.id === String(selectedNode.id));
     const fallbackPosition = getFlowPosition(selectedNode.configJson, 80, 120);
-    const configJson = mergeFlowPosition(
-      JSON.stringify(buildNodeConfigFromForm(normalizedValues)),
-      flowNode?.position ?? fallbackPosition
-    );
+    const nextConfigJson =
+      normalizedValues.nodeType === "list_lookup"
+        ? selectedNode.configJson
+        : JSON.stringify(buildNodeConfigFromForm(normalizedValues));
+    const configJson = mergeFlowPosition(nextConfigJson, flowNode?.position ?? fallbackPosition);
     const nextIssues = validateNodeDetail(normalizedValues);
     setNodeValidationIssues(nextIssues);
     const hasIssues = nextIssues.length > 0;
@@ -952,7 +892,8 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
               ...item,
               data: {
                 ...item.data,
-                label: `${nextNode.orderNo}. ${nextNode.name}`,
+                label: formatFlowNodeLabel(nextNode.orderNo, nextNode.name),
+                typeLabel: formatFlowNodeTypeLabel(nextNode.nodeType),
                 nodeType: nextNode.nodeType,
                 enabled: nextNode.enabled
               },
@@ -990,7 +931,7 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
       return [] as FieldValidationIssue[];
     }
     return validateNodeDetail(watchedNodeValues ?? {});
-  }, [interfaces, listDatas, nodeOutputReferenceOptions, selectedNode, watchedNodeValues]);
+  }, [interfaces, nodeOutputReferenceOptions, pageFieldOptions, selectedNode, watchedNodeValues]);
 
   async function removeFlowNode(nodeId: string, options?: { silent?: boolean }) {
     if (!builderScene) {
@@ -1177,16 +1118,17 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
 
   return {
     drawerWidth, loading, statusFilter, setStatusFilter, filteredRows, openCreate, openEdit, switchStatus,
-    openBuilder, openPreview, triggerFloating, confirmRisk, rows, linkedRulesByScene, open, closeSceneModal,
+    openBuilder, openPreview, triggerFloating, rows, linkedRulesByScene, open, closeSceneModal,
     submitScene, form, resources, executionLabel, editing, builderOpen, closeBuilder, savingFlow, saveFlowLayout,
     autoLayoutNodes, builderScene, nodeRows, selectedNodeId, setSelectedNodeId, selectFlowNode, flowNodes, flowEdges,
     onFlowNodesChange, onFlowEdgesChange, onConnect, setReactFlowInstance, nodeLibrary, nodeTypeLabel,
-    addNodeFromLibrary, addNodeFromLibraryAtClientPosition, selectedLibraryNodeType, previewLibraryNode, selectedNode, selectedNodeListData, pageFieldOptions, interfaces, listDatas, nodeDetailForm, watchedNodeType, removeSelectedNode, removeFlowNode,
+    addNodeFromLibrary, addNodeFromLibraryAtClientPosition, selectedLibraryNodeType, previewLibraryNode, selectedNode, pageFieldOptions, interfaces, nodeDetailForm, watchedNodeType, removeSelectedNode, removeFlowNode,
     selectedApiInputParams,
     selectedApiOutputOptions,
     nodeOutputReferenceOptions,
     previewOpen, setPreviewOpen, previewScene, previewRows, previewSelectedKeys, setPreviewSelectedKeys,
     previewLoading, previewExecuting, executePreview, holder, statusColor, autoOpenCreateRef,
+    msgApi,
     sceneSaveValidationReport: activeSceneSaveValidationReport,
     nodeValidationIssues: liveNodeValidationIssues.length > 0 ? liveNodeValidationIssues : nodeValidationIssues,
     previewValidationIssues,
@@ -1195,6 +1137,8 @@ export function useJobScenesPageModel(options: JobScenesPageModelOptions = {}) {
     publishNoticeNow,
     publishSceneNow,
     restoreSceneNow,
-    cloneSceneToViewerOrg
+    cloneSceneToViewerOrg,
+    pageMenus,
+    reloadData: loadData
   };
 }

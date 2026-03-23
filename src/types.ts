@@ -2,6 +2,9 @@ export type LifecycleState = "DRAFT" | "ACTIVE" | "DISABLED" | "EXPIRED";
 
 export type PromptMode = "SILENT" | "FLOATING";
 export type PromptCloseMode = "AUTO_CLOSE" | "MANUAL_CLOSE" | "TIMER_THEN_MANUAL";
+export type PromptTriggerResult = "HIT" | "MISS" | "FAILED";
+export type JobExecutionTriggerSource = "PROMPT_CONFIRM" | "FLOATING_BUTTON" | "AUTO" | "MANUAL_RETRY";
+export type JobExecutionResult = "SUCCESS" | "PARTIAL_SUCCESS" | "FAILED";
 export type ExecutionMode =
   | "AUTO_WITHOUT_PROMPT"
   | "AUTO_AFTER_PROMPT"
@@ -13,7 +16,6 @@ export type RuleOperandSourceType = "PAGE_FIELD" | "INTERFACE_FIELD" | "LIST_LOO
 export type RuleLookupSourceType = Exclude<RuleOperandSourceType, "LIST_LOOKUP_FIELD">;
 export type RuleOperator = "EQ" | "NE" | "GT" | "GE" | "LT" | "LE" | "CONTAINS" | "NOT_CONTAINS" | "IN" | "EXISTS";
 export type RuleOperandValueType = "STRING" | "NUMBER" | "BOOLEAN" | "OBJECT" | "ARRAY";
-export type ListDataBuildStatus = "PENDING" | "BUILDING" | "READY" | "FAILED";
 export type ListLookupJudgement = "MATCHED" | "NOT_MATCHED";
 export type ShareMode = "PRIVATE" | "SHARED";
 
@@ -24,25 +26,9 @@ export interface ShareConfigFields {
   sharedAt?: string;
 }
 
-export interface PageSite {
-  id: number;
-  code: string;
-  name: string;
-  status: LifecycleState;
-}
-
-export interface PageRegion {
-  id: number;
-  siteId: number;
-  regionCode: string;
-  regionName: string;
-  status: LifecycleState;
-}
-
 export interface PageMenu {
   id: number;
-  siteId: number;
-  regionId: number;
+  regionId: string;
   menuName: string;
   menuCode: string;
   status: LifecycleState;
@@ -51,7 +37,7 @@ export interface PageMenu {
 
 export interface PageResource {
   id: number;
-  menuId: number;
+  menuCode: string;
   pageCode: string;
   frameCode?: string;
   name: string;
@@ -69,7 +55,7 @@ export interface PageElement {
   logicName: string;
   selector: string;
   selectorType: "XPATH" | "CSS";
-  required: boolean;
+  frameLocation: string;
   updatedAt: string;
 }
 
@@ -133,7 +119,7 @@ export interface InterfaceDefinition {
   id: number;
   name: string;
   description: string;
-  method: "GET" | "POST" | "PUT" | "DELETE";
+  method: "GET" | "POST";
   testPath: string;
   prodPath: string;
   url: string;
@@ -151,23 +137,18 @@ export interface InterfaceDefinition {
   updatedAt: string;
 }
 
-export interface ListDataDefinition {
+export interface InterfaceDraftPayload {
   id: number;
   name: string;
   description: string;
-  ownerOrgId: string;
-  scope: string;
-  effectiveStartAt: string;
-  effectiveEndAt: string;
-  status: LifecycleState;
+  method: "GET" | "POST";
+  prodPath: string;
   currentVersion: number;
-  rowCount: number;
-  importColumns: string[];
-  outputFields: string[];
-  importFileName: string;
-  indexBuildStatus: ListDataBuildStatus;
-  activeAlias: string;
-  updatedAt: string;
+  bodyTemplateJson: string;
+  inputConfigJson: string;
+  outputConfigJson: string;
+  paramSourceSummary: string;
+  responsePath: string;
 }
 
 export interface RuleListLookupCondition {
@@ -180,15 +161,27 @@ export interface RuleListLookupCondition {
   judgement: ListLookupJudgement;
 }
 
-export interface PreprocessorDefinition {
+export interface DataProcessorDefinition {
   id: number;
   name: string;
-  processorType: "BUILT_IN" | "SCRIPT";
-  category: "STRING" | "NUMBER" | "DATE" | "JSON";
+  paramCount: number;
+  functionCode: string;
+  status: LifecycleState;
+  usedByCount: number;
+  updatedAt: string;
+}
+
+export type ContextVariableValueSource = "STATIC" | "SCRIPT";
+
+export interface ContextVariableDefinition {
+  id: number;
+  key: string;
+  label: string;
+  valueSource: ContextVariableValueSource;
+  staticValue?: string;
   scriptContent?: string;
   status: LifecycleState;
   ownerOrgId: string;
-  usedByCount: number;
   updatedAt: string;
 }
 
@@ -233,7 +226,7 @@ export interface RuleOperand {
   sourceType: RuleOperandSourceType;
   key: string;
   constValue?: string;
-  preprocessorIds: number[];
+  dataProcessorIds: number[];
   valueType?: RuleOperandValueType;
   displayValue?: string;
   interfaceBinding?: {
@@ -255,9 +248,9 @@ export interface RuleOperand {
     }>;
     resultField?: string;
   };
-  preprocessorConfigs?: Array<{
-    preprocessorId: number;
-    params?: string;
+  dataProcessorConfigs?: Array<{
+    dataProcessorId: number;
+    args?: string[];
   }>;
 }
 
@@ -322,11 +315,9 @@ export interface JobSceneDefinition {
   floatingButtonX?: number;
   floatingButtonY?: number;
   status: LifecycleState;
-  currentVersion: number;
   nodeCount: number;
   manualDurationSec: number;
   riskConfirmed: boolean;
-  updatedAt: string;
 }
 
 export interface JobNodeDefinition {
@@ -344,8 +335,8 @@ export interface JobExecutionSummary {
   id: number;
   sceneId: number;
   sceneName: string;
-  triggerSource: ExecutionLogItem["triggerSource"];
-  result: ExecutionLogItem["result"];
+  triggerSource: JobExecutionTriggerSource;
+  result: JobExecutionResult;
   fallbackToManual: boolean;
   detail: string;
   startedAt: string;
@@ -373,37 +364,34 @@ export interface JobScenePreviewField {
   abnormal: boolean;
 }
 
-export interface SdkArtifactVersion {
-  id: number;
-  sdkVersion: string;
-  sdkMajorVersion: number;
-  loaderVersion: string;
-  artifactManifestUrl: string;
-  compatibility: string;
-  status: LifecycleState;
-  publishedBy: string;
-  publishedAt: string;
-  notes: string;
-}
-
 export interface PlatformRuntimeConfig {
   promptStableVersion: string;
   promptGrayDefaultVersion?: string;
   jobStableVersion: string;
   jobGrayDefaultVersion?: string;
-  updatedAt: string;
   updatedBy: string;
+  updateTime?: string;
 }
 
-export type JobPreloadPolicy = "immediate" | "idle" | "intent" | "none";
+export interface GeneralConfigItem {
+  id: number;
+  groupKey: string;
+  itemKey: string;
+  itemValue: string;
+  description?: string;
+  status: LifecycleState;
+  orderNo: number;
+  updatedAt: string;
+}
+
 export type CapabilityOpenStatus = "ENABLED" | "DISABLED" | "PENDING";
 
 export interface MenuSdkPolicy {
   id: number;
-  siteId: number;
-  regionId: number;
+  regionId?: string;
   menuId: number;
   menuCode: string;
+  menuName?: string;
   promptGrayEnabled: boolean;
   promptGrayVersion?: string;
   promptGrayOrgIds: string[];
@@ -414,7 +402,7 @@ export interface MenuSdkPolicy {
   effectiveEnd: string;
   status: LifecycleState;
   ownerOrgId: string;
-  updatedAt: string;
+  updateTime?: string;
 }
 
 export interface MenuCapabilityPolicy {
@@ -423,8 +411,6 @@ export interface MenuCapabilityPolicy {
   promptStatus: CapabilityOpenStatus;
   jobStatus: CapabilityOpenStatus;
   status: LifecycleState;
-  updatedAt: string;
-  updatedBy: string;
 }
 
 export interface MenuCapabilityRequest {
@@ -434,20 +420,6 @@ export interface MenuCapabilityRequest {
   reason: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   applicant: string;
-  createdAt: string;
-}
-
-export interface PageActivationPolicy {
-  id: number;
-  pageResourceId: number;
-  enabled: boolean;
-  promptRuleSetName: string;
-  hasJobScenes: boolean;
-  jobPreloadPolicy: JobPreloadPolicy;
-  jobSceneName?: string;
-  status: LifecycleState;
-  ownerOrgId: string;
-  updatedAt: string;
 }
 
 export interface PublishPendingSummary {
@@ -465,10 +437,8 @@ export interface PublishPendingItem {
     | "RULE"
     | "JOB_SCENE"
     | "INTERFACE"
-    | "LIST_DATA"
     | "PREPROCESSOR"
-    | "MENU_SDK_POLICY"
-    | "PAGE_ACTIVATION_POLICY";
+    | "MENU_SDK_POLICY";
   resourceId: number;
   resourceName: string;
   status: LifecycleState;
@@ -573,26 +543,6 @@ export interface PublishPendingResult {
   report: PublishValidationReport;
 }
 
-export interface TriggerLogItem {
-  id: number;
-  ruleName: string;
-  pageResourceName: string;
-  triggerResult: "HIT" | "MISS" | "FAILED";
-  reason: string;
-  operator: string;
-  createdAt: string;
-}
-
-export interface ExecutionLogItem {
-  id: number;
-  sceneName: string;
-  triggerSource: "PROMPT_CONFIRM" | "FLOATING_BUTTON" | "AUTO" | "MANUAL_RETRY";
-  result: "SUCCESS" | "PARTIAL_SUCCESS" | "FAILED";
-  latencyMs: number;
-  reason: string;
-  createdAt: string;
-}
-
 export interface PromptHitRecord {
   id: number;
   ruleId: number;
@@ -625,8 +575,8 @@ export interface JobExecutionRecord {
   pageResourceName: string;
   orgId: string;
   orgName: string;
-  triggerSource: ExecutionLogItem["triggerSource"];
-  result: ExecutionLogItem["result"];
+  triggerSource: JobExecutionTriggerSource;
+  result: JobExecutionResult;
   failureReasonSummary?: string;
   startedAt: string;
   finishedAt: string;
@@ -634,19 +584,13 @@ export interface JobExecutionRecord {
 
 export interface JobExecutionRecordFilters {
   keyword?: string;
-  result?: ExecutionLogItem["result"] | "ALL";
+  result?: JobExecutionResult | "ALL";
   pageResourceId?: number;
   orgId?: string;
   startAt?: string;
   endAt?: string;
   sceneId?: number;
   sceneName?: string;
-}
-
-export interface FailureReasonMetric {
-  reason: string;
-  count: number;
-  ratio: number;
 }
 
 export interface MetricsOverview {

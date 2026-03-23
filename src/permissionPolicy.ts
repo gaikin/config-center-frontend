@@ -5,11 +5,7 @@ export const HEAD_OFFICE_ORG_ID = "head-office";
 export const HIGH_PRIVILEGE_RESOURCE_PATHS: string[] = ["/action/page-management/capability/manage"];
 
 const BASE_RESOURCE_PATHS: string[] = [
-  "/menu/dashboard",
-  "/menu/stats",
   "/menu/run-records",
-  "/page/dashboard/list",
-  "/page/stats/list",
   "/page/run-records/list",
   "/action/common/base/view"
 ];
@@ -20,11 +16,13 @@ const CONFIG_OPERATOR_RESOURCE_PATHS: string[] = [
   "/menu/prompts",
   "/menu/jobs",
   "/menu/interfaces",
+  "/menu/public-fields",
   "/menu/advanced",
   "/page/page-management/list",
   "/page/prompts/list",
   "/page/jobs/list",
   "/page/interfaces/list",
+  "/page/public-fields/list",
   "/page/advanced/list",
   "/action/common/base/config",
   "/action/common/base/validate",
@@ -33,7 +31,9 @@ const CONFIG_OPERATOR_RESOURCE_PATHS: string[] = [
 
 const PERMISSION_ADMIN_RESOURCE_PATHS: string[] = [
   ...BASE_RESOURCE_PATHS,
+  "/menu/roles",
   "/menu/advanced",
+  "/page/roles/list",
   "/page/advanced/list",
   "/action/roles/list/manage"
 ];

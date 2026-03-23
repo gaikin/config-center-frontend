@@ -13,28 +13,29 @@ import {
   Segmented,
   Select,
   Space,
-  Statistic,
   Switch,
   Table,
   Tabs,
   Tag,
   Tooltip,
-  Typography,
-  message
+  Typography
 } from "antd";
-import { DeleteOutlined, EditOutlined, EyeOutlined, InfoCircleOutlined, MoreOutlined, PartitionOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, InfoCircleOutlined, MoreOutlined, PartitionOutlined, PlusOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import dayjs from "dayjs";
 import { type DragEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { EffectiveConfirmModal } from "../../components/EffectiveConfirmModal";
 import { PublishContinuationAlert } from "../../components/PublishContinuationAlert";
+import { ScopeQuickFilters, type ScopeMenuOption, type ScopePageOption } from "../../components/ScopeQuickFilters";
 import { ValidationReportPanel } from "../../components/ValidationReportPanel";
-import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlockedMessage, getPublishValidationByResource } from "../../effectiveFlow";
+import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlockedMessage } from "../../effectiveFlow";
 import { lifecycleLabelMap } from "../../enumLabels";
 import { getOrgLabel, orgOptions } from "../../orgOptions";
+import { configCenterService } from "../../services/configCenterService";
 import { useMockSession } from "../../session/mockSession";
 import { NodeLibraryPanel } from "./NodeLibraryPanel";
 import { readNodeTypeFromDragData } from "./nodeLibraryDnD";
@@ -42,18 +43,17 @@ import { JobFlowNode } from "./JobFlowNode";
 import { useJobScenesPageModel } from "./useJobScenesPageModel";
 import {
   buildExecutionMode,
-  derivePreviewBeforeExecute,
   FlowEdge,
   FlowNode,
   HOTKEY_MAIN_KEY_OPTIONS,
   HOTKEY_MODIFIER_OPTIONS,
+  isApiOutputSelectionRequired,
   deriveTriggerMode,
-  getRunModeLabel,
   getTriggerModeLabel,
   StatusFilter,
   type TriggerMode
 } from "./jobScenesPageShared";
-import type { ExecutionMode, JobSceneDefinition, JobScenePreviewField, LifecycleState, PublishValidationReport } from "../../types";
+import type { ExecutionMode, JobSceneDefinition, JobScenePreviewField, LifecycleState, PublishValidationReport, ShareMode } from "../../types";
 
 type EffectiveTarget = {
   id: number;
@@ -73,21 +73,6 @@ const PageHeader = styled.div`
   margin-bottom: var(--space-16);
 `;
 
-const SummaryCard = styled(Card)<{ $accent: string }>`
-  height: 100%;
-
-  &::before {
-    content: "";
-    display: block;
-    height: 4px;
-    background: ${({ $accent }) => $accent};
-  }
-
-  .ant-card-body {
-    padding-top: 14px;
-  }
-`;
-
 const SceneTypeCard = styled(Card)`
   margin-bottom: 12px;
 `;
@@ -96,7 +81,7 @@ const ScenePresetCard = styled(Card)`
   width: 320px;
 `;
 
-const ToolbarCard = styled(Card)`
+const ToolbarSection = styled.section`
   margin-bottom: 12px;
 `;
 
@@ -114,6 +99,7 @@ export function JobScenesPage() {
   const [keyword, setKeyword] = useState("");
   const {
     holder,
+    msgApi,
     statusFilter,
     setStatusFilter,
     filteredRows,
@@ -124,6 +110,7 @@ export function JobScenesPage() {
     openPreview,
     loading,
     linkedRulesByScene,
+    pageMenus,
     open,
     closeSceneModal,
     submitScene,
@@ -149,10 +136,8 @@ export function JobScenesPage() {
     selectedLibraryNodeType,
     previewLibraryNode,
     selectedNode,
-    selectedNodeListData,
     pageFieldOptions,
     interfaces,
-    listDatas,
     nodeDetailForm,
     selectedApiInputParams,
     selectedApiOutputOptions,
@@ -178,12 +163,12 @@ export function JobScenesPage() {
     dismissPublishNotice,
     publishSceneNow,
     restoreSceneNow,
-    cloneSceneToViewerOrg
+    cloneSceneToViewerOrg,
+    reloadData
   } = useJobScenesPageModel({
     viewerOrgId: meta.orgScopeId,
     viewerOperatorId: meta.operatorId
   });
-  const [msgApi, msgHolder] = message.useMessage();
   const [effectiveTarget, setEffectiveTarget] = useState<EffectiveTarget | null>(null);
   const [effectiveLoading, setEffectiveLoading] = useState(false);
   const [effectiveSubmitting, setEffectiveSubmitting] = useState(false);
@@ -191,9 +176,19 @@ export function JobScenesPage() {
   const [effectiveBlockedMessage, setEffectiveBlockedMessage] = useState<string | null>(null);
   const [effectiveScopeMode, setEffectiveScopeMode] = useState<EffectiveScopeMode>("ALL_ORGS");
   const [effectiveScopeOrgIds, setEffectiveScopeOrgIds] = useState<string[]>([]);
+  const [effectiveStartAt, setEffectiveStartAt] = useState("");
+  const [effectiveEndAt, setEffectiveEndAt] = useState("");
+  const [shareTargetScene, setShareTargetScene] = useState<JobSceneDefinition | null>(null);
+  const [shareModeDraft, setShareModeDraft] = useState<ShareMode>("PRIVATE");
+  const [shareOrgIdsDraft, setShareOrgIdsDraft] = useState<string[]>([]);
+  const [shareSubmitting, setShareSubmitting] = useState(false);
   const [canvasDragOver, setCanvasDragOver] = useState(false);
   const effectiveMeta = effectiveTarget ? getEffectiveActionMeta(effectiveTarget.status) : null;
   const effectiveScopeOptions = useMemo(
+    () => orgOptions.map((item) => ({ label: item.label, value: String(item.value) })),
+    []
+  );
+  const shareScopeOptions = useMemo(
     () => orgOptions.map((item) => ({ label: item.label, value: String(item.value) })),
     []
   );
@@ -212,11 +207,12 @@ export function JobScenesPage() {
   const sceneNameParam = searchParams.get("sceneName");
   const quickAction = searchParams.get("action");
   const hasPageFilter = Number.isFinite(pageResourceFilter) && pageResourceFilter > 0;
+  const [selectedMenuId, setSelectedMenuId] = useState<number | undefined>(undefined);
+  const [selectedPageId, setSelectedPageId] = useState<number | undefined>(hasPageFilter ? pageResourceFilter : undefined);
   const presetPageName = resources.find((item) => item.id === pageResourceFilter)?.name;
   const presetExecutionMode = (
     executionModeParam === "AUTO_WITHOUT_PROMPT" ||
     executionModeParam === "AUTO_AFTER_PROMPT" ||
-    executionModeParam === "PREVIEW_THEN_EXECUTE" ||
     executionModeParam === "FLOATING_BUTTON"
   )
     ? executionModeParam
@@ -236,6 +232,36 @@ export function JobScenesPage() {
     return scopeOrgIds.map((orgId) => getOrgLabel(orgId)).join("、");
   };
 
+  function openShareSettings(row: JobSceneDefinition) {
+    setShareTargetScene(row);
+    setShareModeDraft(row.shareMode === "SHARED" ? "SHARED" : "PRIVATE");
+    setShareOrgIdsDraft((row.sharedOrgIds ?? []).filter((orgId) => orgId !== row.ownerOrgId));
+  }
+
+  async function submitShareSettings() {
+    if (!shareTargetScene) {
+      return;
+    }
+    setShareSubmitting(true);
+    try {
+      await configCenterService.updateJobSceneShareConfig(
+        shareTargetScene.id,
+        {
+          shareMode: shareModeDraft,
+          sharedOrgIds: shareModeDraft === "SHARED" ? shareOrgIdsDraft : []
+        },
+        meta.operatorId
+      );
+      msgApi.success("共享设置已保存");
+      setShareTargetScene(null);
+      await reloadData();
+    } catch (error) {
+      msgApi.error(error instanceof Error ? error.message : "共享设置保存失败");
+    } finally {
+      setShareSubmitting(false);
+    }
+  }
+
   useEffect(() => {
     if (!hasPageFilter || quickAction !== "create" || autoOpenCreateRef.current) {
       return;
@@ -248,33 +274,72 @@ export function JobScenesPage() {
     });
   }, [autoOpenCreateRef, hasPageFilter, openCreate, pageResourceFilter, presetExecutionMode, quickAction, sceneNameParam]);
 
-  const visibleRows = useMemo(() => {
-    if (!hasPageFilter) {
-      return filteredRows;
+  const currentScopeMenu = useMemo(
+    () => (typeof selectedMenuId === "number" ? pageMenus.find((item) => item.id === selectedMenuId) ?? null : null),
+    [pageMenus, selectedMenuId]
+  );
+  const scopeMenus = useMemo<ScopeMenuOption[]>(
+    () => pageMenus.map((menu) => ({ id: menu.id, label: menu.menuName })),
+    [pageMenus]
+  );
+  const scopePages = useMemo<ScopePageOption[]>(
+    () =>
+      resources.map((page) => {
+        const matchedMenu = pageMenus.find((item) => item.menuCode === page.menuCode);
+        return {
+          id: page.id,
+          label: page.name,
+          menuId: matchedMenu?.id ?? 0,
+          menuLabel: matchedMenu?.menuName
+        };
+      }),
+    [pageMenus, resources]
+  );
+  useEffect(() => {
+    if (typeof selectedPageId !== "number") {
+      return;
     }
-    return filteredRows.filter((item) => item.pageResourceId === pageResourceFilter);
-  }, [filteredRows, hasPageFilter, pageResourceFilter]);
+    const matchedPage = resources.find((item) => item.id === selectedPageId);
+    if (matchedPage) {
+      const matchedMenu = pageMenus.find((item) => item.menuCode === matchedPage.menuCode);
+      if (matchedMenu && matchedMenu.id !== selectedMenuId) {
+        setSelectedMenuId(matchedMenu.id);
+      }
+    }
+  }, [pageMenus, resources, selectedMenuId, selectedPageId]);
+  const currentScopePageIds = useMemo(() => {
+    if (!currentScopeMenu) {
+      return [] as number[];
+    }
+    return resources.filter((item) => item.menuCode === currentScopeMenu.menuCode).map((item) => item.id);
+  }, [currentScopeMenu, resources]);
+  const visibleRows = useMemo(() => {
+    let nextRows = filteredRows;
+    if (typeof selectedPageId === "number") {
+      nextRows = nextRows.filter((item) => item.pageResourceId === selectedPageId);
+    } else if (typeof selectedMenuId === "number") {
+      const allowed = new Set(currentScopePageIds);
+      nextRows = nextRows.filter((item) => allowed.has(item.pageResourceId));
+    }
+    return nextRows;
+  }, [currentScopePageIds, filteredRows, selectedMenuId, selectedPageId]);
+  const activePageResourceId = useMemo(
+    () => selectedPageId ?? (typeof selectedMenuId === "number" ? currentScopePageIds[0] : undefined),
+    [currentScopePageIds, selectedMenuId, selectedPageId]
+  );
   const keywordValue = keyword.trim().toLowerCase();
   const searchedRows = useMemo(() => {
     if (!keywordValue) {
       return visibleRows;
     }
     return visibleRows.filter((item) => {
-      return item.name.toLowerCase().includes(keywordValue) || item.pageResourceName.toLowerCase().includes(keywordValue);
+      const sceneName = (item.name ?? "").toLowerCase();
+      const pageName = (item.pageResourceName ?? "").toLowerCase();
+      return sceneName.includes(keywordValue) || pageName.includes(keywordValue);
     });
   }, [keywordValue, visibleRows]);
-  const sceneSummary = useMemo(() => {
-    const total = visibleRows.length;
-    const draft = visibleRows.filter((item) => item.status === "DRAFT").length;
-    const active = visibleRows.filter((item) => item.status === "ACTIVE").length;
-    const disabled = visibleRows.filter((item) => item.status === "DISABLED").length;
-    return { total, draft, active, disabled };
-  }, [visibleRows]);
   const watchedExecutionMode = Form.useWatch("executionMode", form) as ExecutionMode | undefined;
-  const watchedPreviewBeforeExecute = Form.useWatch("previewBeforeExecute", form) as boolean | undefined;
   const watchedFloatingButtonEnabled = Form.useWatch("floatingButtonEnabled", form) as boolean | undefined;
-  const watchedInputSourceType = Form.useWatch("inputSourceType", nodeDetailForm) as "STRING" | "REFERENCE" | undefined;
-  const watchedInputSourceValue = Form.useWatch("inputSource", nodeDetailForm) as string | undefined;
   const watchedValueType = Form.useWatch("valueType", nodeDetailForm) as "STRING" | "REFERENCE" | undefined;
   const watchedValue = Form.useWatch("value", nodeDetailForm) as string | undefined;
   const watchedApiInputBindings = Form.useWatch("apiInputBindings", nodeDetailForm) as
@@ -285,7 +350,6 @@ export function JobScenesPage() {
     | undefined;
   const watchedApiRefactorRequired = Form.useWatch("apiRefactorRequired", nodeDetailForm) as boolean | undefined;
   const selectedTriggerMode: TriggerMode = watchedExecutionMode ? deriveTriggerMode(watchedExecutionMode) : "AUTO";
-  const selectedPreviewBeforeExecute = Boolean(watchedPreviewBeforeExecute);
   const floatingRetriggerEnabled = selectedTriggerMode === "BUTTON" || Boolean(watchedFloatingButtonEnabled);
   const linkedFloatingPromptRules = useMemo(() => {
     if (!editing?.id) {
@@ -332,20 +396,6 @@ export function JobScenesPage() {
       })
       .filter((tab) => tab.params.length > 0);
   }, [selectedApiInputParams]);
-
-  useEffect(() => {
-    if (activeNodeType !== "list_lookup" || watchedInputSourceType !== "REFERENCE") {
-      return;
-    }
-    const currentValue = watchedInputSourceValue?.trim();
-    if (!currentValue) {
-      return;
-    }
-    const matched = nodeOutputReferenceOptions.some((item) => item.value === currentValue);
-    if (!matched) {
-      nodeDetailForm.setFieldValue("inputSource", undefined);
-    }
-  }, [activeNodeType, nodeDetailForm, nodeOutputReferenceOptions, watchedInputSourceType, watchedInputSourceValue]);
 
   useEffect(() => {
     if (activeNodeType !== "page_set" || watchedValueType !== "REFERENCE") {
@@ -431,7 +481,7 @@ export function JobScenesPage() {
     {
       key: "auto-run",
       title: "自动执行",
-      desc: "提示完成后自动进入作业流程，默认直接执行，可选预览确认。",
+      desc: "提示完成后自动进入作业流程，默认直接执行。",
       mode: "AUTO_AFTER_PROMPT" as const
     },
     {
@@ -449,12 +499,6 @@ export function JobScenesPage() {
         label: "编辑",
         icon: <EditOutlined />,
         onClick: () => openEdit(row)
-      },
-      {
-        key: "preview",
-        label: "预览确认",
-        icon: <EyeOutlined />,
-        onClick: () => void openPreview(row)
       },
       {
         key: "run-records",
@@ -478,6 +522,8 @@ export function JobScenesPage() {
   function resetListFilters() {
     setKeyword("");
     setStatusFilter("ALL");
+    setSelectedMenuId(undefined);
+    setSelectedPageId(undefined);
   }
 
   async function openEffectiveAction(target: EffectiveTarget) {
@@ -494,23 +540,25 @@ export function JobScenesPage() {
     setEffectiveBlockedMessage(null);
     setEffectiveScopeMode("ALL_ORGS");
     setEffectiveScopeOrgIds([]);
+    setEffectiveStartAt(dayjs().format("YYYY-MM-DD HH:mm"));
+    setEffectiveEndAt("");
 
     if (action.type !== "PUBLISH") {
       return;
     }
-    setEffectiveLoading(true);
-    try {
-      const validation = await getPublishValidationByResource("JOB_SCENE", target.id);
-      if (!validation) {
-        setEffectiveBlockedMessage("当前对象没有待发布版本，请先保存草稿。");
-        return;
-      }
-      setEffectiveValidationReport(validation.report);
-    } catch (error) {
-      setEffectiveBlockedMessage(error instanceof Error ? error.message : "加载生效检查结果失败");
-    } finally {
-      setEffectiveLoading(false);
-    }
+    setEffectiveValidationReport({
+      pass: true,
+      items: [
+        {
+          key: "instant_publish",
+          label: "即时生效",
+          passed: true,
+          detail: "当前模式为保存即生效，无需待发布步骤"
+        }
+      ],
+      blockingCount: 0,
+      warningCount: 0
+    });
   }
 
   async function confirmEffectiveAction() {
@@ -526,8 +574,6 @@ export function JobScenesPage() {
           effectiveScopeMode === "CUSTOM_ORGS" ? effectiveScopeOrgIds : []
         );
         if (!success) {
-          const validation = await getPublishValidationByResource("JOB_SCENE", effectiveTarget.id);
-          setEffectiveValidationReport(validation?.report ?? null);
           return;
         }
       } else {
@@ -555,6 +601,8 @@ export function JobScenesPage() {
       setEffectiveTarget(null);
       setEffectiveValidationReport(null);
       setEffectiveBlockedMessage(null);
+      setEffectiveStartAt("");
+      setEffectiveEndAt("");
     } finally {
       setEffectiveSubmitting(false);
     }
@@ -563,7 +611,6 @@ export function JobScenesPage() {
   return (
     <div>
       {holder}
-      {msgHolder}
       <PageHeader>
         <Typography.Title level={4}>作业编排</Typography.Title>
       </PageHeader>
@@ -595,29 +642,6 @@ export function JobScenesPage() {
         />
       ) : null}
 
-      <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-        <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
-            <Statistic title="作业场景总数" value={sceneSummary.total} />
-          </SummaryCard>
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #4a617a 0%, #7387a0 100%)">
-            <Statistic title="草稿场景" value={sceneSummary.draft} />
-          </SummaryCard>
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
-            <Statistic title="已启用" value={sceneSummary.active} />
-          </SummaryCard>
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
-            <Statistic title="已停用" value={sceneSummary.disabled} />
-          </SummaryCard>
-        </Col>
-      </Row>
-
       <SceneTypeCard title="场景类型（业务视角）">
         <Space size={[8, 8]} wrap>
           {sceneCards.map((item) => (
@@ -629,7 +653,7 @@ export function JobScenesPage() {
                   type="primary"
                   onClick={() =>
                     openCreate({
-                      pageResourceId: hasPageFilter ? pageResourceFilter : undefined,
+                      pageResourceId: activePageResourceId,
                       executionMode: item.mode,
                       name: sceneNameParam ?? `${item.title}-${new Date().getTime()}`
                     })
@@ -648,10 +672,33 @@ export function JobScenesPage() {
         type="info"
         style={{ marginBottom: 12 }}
         message="共享状态说明"
-        description="共享对象仅可查看；如需调整，请使用“复制为我的版本”。"
+        description="创建者可通过“共享设置”配置范围；共享对象仅可查看，如需调整请复制为我的版本。"
       />
 
-      <ToolbarCard>
+      <div style={{ marginBottom: 12 }}>
+        <ScopeQuickFilters
+          menus={scopeMenus}
+          pages={scopePages}
+          selectedMenuId={selectedMenuId}
+          selectedPageId={selectedPageId}
+          onMenuChange={(menuId) => {
+            setSelectedMenuId(menuId);
+            setSelectedPageId(undefined);
+          }}
+            onPageChange={(pageId) => {
+              setSelectedPageId(pageId);
+              if (typeof pageId !== "number") {
+                return;
+              }
+              const page = scopePages.find((item) => item.id === pageId);
+              if (page) {
+                setSelectedMenuId(page.menuId);
+              }
+            }}
+          />
+      </div>
+
+      <ToolbarSection>
         <Row gutter={[10, 10]} align="middle">
           <Col xs={24} lg={9}>
             <Input.Search
@@ -698,7 +745,7 @@ export function JobScenesPage() {
                 icon={<PlusOutlined />}
                 onClick={() =>
                   openCreate({
-                    pageResourceId: hasPageFilter ? pageResourceFilter : undefined,
+                    pageResourceId: activePageResourceId,
                     executionMode: presetExecutionMode,
                     name: sceneNameParam ?? undefined
                   })
@@ -710,7 +757,7 @@ export function JobScenesPage() {
             </ActionBar>
           </Col>
         </Row>
-      </ToolbarCard>
+      </ToolbarSection>
 
       <Card
         extra={<Typography.Text type="secondary">当前展示 {searchedRows.length} 项</Typography.Text>}
@@ -728,17 +775,12 @@ export function JobScenesPage() {
               width: 280,
               render: (_, row) => {
                 const triggerMode = deriveTriggerMode(row.executionMode);
-                const previewBeforeExecute = derivePreviewBeforeExecute(row);
                 const floatingEnabled = row.floatingButtonEnabled ?? row.executionMode === "FLOATING_BUTTON";
                 const shouldShowRetriggerTag = triggerMode === "AUTO" && floatingEnabled;
-                const isDefault = triggerMode === "AUTO" && !previewBeforeExecute && !shouldShowRetriggerTag;
-                if (isDefault) {
-                  return null;
-                }
                 return (
                   <Space size={[6, 4]} wrap>
+                    {triggerMode === "AUTO" ? <Tag>自动触发</Tag> : null}
                     {triggerMode === "BUTTON" ? <Tag color="blue">按钮触发</Tag> : null}
-                    {previewBeforeExecute ? <Tag color="gold">预览确认</Tag> : null}
                     {shouldShowRetriggerTag ? <Tag color="processing">补充按钮</Tag> : null}
                   </Space>
                 );
@@ -810,6 +852,9 @@ export function JobScenesPage() {
                     </Button>
                     <Button size="small" onClick={() => openEdit(row)}>
                       编辑
+                    </Button>
+                    <Button size="small" onClick={() => openShareSettings(row)}>
+                      共享设置
                     </Button>
                     <Dropdown menu={{ items: buildRowMenuItems(row) }} trigger={["click"]}>
                       <Button size="small" icon={<MoreOutlined />}>
@@ -903,7 +948,7 @@ export function JobScenesPage() {
               ]}
               onChange={(value) => {
                 const nextTriggerMode = value as TriggerMode;
-                const nextExecutionMode = buildExecutionMode(nextTriggerMode, selectedPreviewBeforeExecute);
+                const nextExecutionMode = buildExecutionMode(nextTriggerMode, false);
                 form.setFieldValue("executionMode", nextExecutionMode);
                 if (nextTriggerMode === "BUTTON") {
                   form.setFieldValue("floatingButtonEnabled", true);
@@ -919,21 +964,6 @@ export function JobScenesPage() {
                 } else if (form.getFieldValue("floatingButtonEnabled") === undefined) {
                   form.setFieldValue("floatingButtonEnabled", false);
                 }
-              }}
-            />
-          </Form.Item>
-          <Form.Item
-            name="previewBeforeExecute"
-            label="预览确认"
-            valuePropName="checked"
-            style={{ marginBottom: 12 }}
-          >
-            <Switch
-              checkedChildren="开启"
-              unCheckedChildren="关闭"
-              onChange={(checked) => {
-                const currentTrigger = deriveTriggerMode((form.getFieldValue("executionMode") as ExecutionMode) ?? "AUTO_AFTER_PROMPT");
-                form.setFieldValue("executionMode", buildExecutionMode(currentTrigger, checked));
               }}
             />
           </Form.Item>
@@ -1059,9 +1089,7 @@ export function JobScenesPage() {
                   disabledNodeTypes={
                     builderReadonlyShared
                       ? nodeLibrary.map((item) => item.nodeType)
-                      : listDatas.length === 0
-                        ? ["list_lookup"]
-                        : []
+                      : []
                   }
                   onSelect={previewLibraryNode}
                   onAdd={(nodeType) => {
@@ -1070,22 +1098,6 @@ export function JobScenesPage() {
                     }
                   }}
                 />
-                {listDatas.length === 0 ? (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    style={{ marginTop: 12 }}
-                    message="名单检索节点暂不可用"
-                    description={
-                      <Space direction="vertical" size={4}>
-                        <Typography.Text type="secondary">请先到高级配置维护名单数据后，再添加名单检索节点。</Typography.Text>
-                        <Button size="small" type="primary" onClick={() => navigate("/advanced?tab=list-data")}>
-                          去维护名单
-                        </Button>
-                      </Space>
-                    }
-                  />
-                ) : null}
               </Card>
 
               <Card title="编排画布" style={{ flex: "1 0 680px", minWidth: 540 }}>
@@ -1291,7 +1303,11 @@ export function JobScenesPage() {
                           <Form.Item
                             name="apiOutputPaths"
                             label="接口出参"
-                            rules={[{ required: true, message: "请至少选择一个出参字段" }]}
+                            rules={
+                              isApiOutputSelectionRequired(selectedApiOutputOptions.length)
+                                ? [{ required: true, message: "请至少选择一个出参字段" }]
+                                : []
+                            }
                           >
                             <Select
                               mode="multiple"
@@ -1306,98 +1322,13 @@ export function JobScenesPage() {
                       ) : null}
 
                       {activeNodeType === "list_lookup" ? (
-                        listDatas.length === 0 ? (
-                          <Alert
-                            type="warning"
-                            showIcon
-                            style={{ marginBottom: 12 }}
-                            message="当前没有可用名单数据"
-                            description={
-                              <Space direction="vertical" size={4}>
-                                <Typography.Text type="secondary">名单检索节点依赖名单中心资产，请先维护名单数据。</Typography.Text>
-                                <Button size="small" type="primary" onClick={() => navigate("/advanced?tab=list-data")}>
-                                  去维护名单
-                                </Button>
-                              </Space>
-                            }
-                          />
-                        ) : (
-                          <>
-                            <Form.Item name="listDataId" label="名单数据" rules={[{ required: true, message: "请选择名单数据" }]}>
-                              <Select
-                                showSearch
-                                optionFilterProp="label"
-                                options={listDatas.map((item) => ({
-                                  label: `${item.name} / ${item.importColumns.length} 个导入字段`,
-                                  value: item.id
-                                }))}
-                                onChange={(value) => {
-                                  const picked = listDatas.find((item) => item.id === value);
-                                  const currentMatchColumn = nodeDetailForm.getFieldValue("matchColumn");
-                                  const currentResultKeys = (nodeDetailForm.getFieldValue("resultKeys") as string[] | undefined) ?? [];
-                                  const candidateOutputs = picked
-                                    ? (picked.outputFields.length > 0 ? picked.outputFields : picked.importColumns)
-                                    : [];
-                                  const normalizedResultKeys = currentResultKeys.filter((item) => candidateOutputs.includes(item));
-                                  nodeDetailForm.setFieldsValue({
-                                    listDataId: value as number | undefined,
-                                    matchColumn:
-                                      picked?.importColumns.includes(currentMatchColumn)
-                                        ? currentMatchColumn
-                                        : picked?.importColumns[0] ?? "",
-                                    resultKeys: normalizedResultKeys.length > 0 ? normalizedResultKeys : candidateOutputs.slice(0, 1)
-                                  });
-                                }}
-                              />
-                            </Form.Item>
-                            <Form.Item name="matchColumn" label="匹配字段" rules={[{ required: true, message: "请选择匹配字段" }]}>
-                              <Select
-                                showSearch
-                                placeholder={selectedNodeListData ? "请选择匹配字段" : "请先选择名单数据"}
-                                options={(selectedNodeListData?.importColumns ?? []).map((item) => ({ label: item, value: item }))}
-                              />
-                            </Form.Item>
-                            <Form.Item label="输入来源">
-                              <Space.Compact style={{ width: "100%" }}>
-                                <Form.Item name="inputSourceType" noStyle rules={[{ required: true, message: "请选择输入来源类型" }]}>
-                                  <Select
-                                    style={{ width: INLINE_TYPE_WIDTH }}
-                                    options={[
-                                      { label: "string", value: "STRING" },
-                                      { label: "引用", value: "REFERENCE" }
-                                    ]}
-                                  />
-                                </Form.Item>
-                                <Form.Item name="inputSource" noStyle rules={[{ required: true, message: "请输入输入来源" }]}>
-                                  {watchedInputSourceType === "REFERENCE" ? (
-                                    <Select
-                                      style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }}
-                                      showSearch
-                                      optionFilterProp="label"
-                                      placeholder="请选择上游输出引用"
-                                      options={nodeOutputReferenceOptions}
-                                      notFoundContent="暂无可用上游输出"
-                                    />
-                                  ) : (
-                                    <Input style={{ width: `calc(100% - ${INLINE_TYPE_WIDTH}px)` }} placeholder="请输入字符串来源，如 customer_id" />
-                                  )}
-                                </Form.Item>
-                              </Space.Compact>
-                            </Form.Item>
-                            <Form.Item name="resultKeys" label="输出字段" rules={[{ required: true, message: "请至少选择一个输出字段" }]}>
-                              <Select
-                                mode="multiple"
-                                showSearch
-                                optionFilterProp="label"
-                                placeholder={selectedNodeListData ? "请选择可输出给下游的字段" : "请先选择名单数据"}
-                                options={((selectedNodeListData?.outputFields?.length ? selectedNodeListData.outputFields : selectedNodeListData?.importColumns) ?? []).map((item) => ({
-                                  label: item,
-                                  value: item
-                                }))}
-                              />
-                            </Form.Item>
-                          </>
-                        )
+                        <Alert
+                          type="warning"
+                          showIcon
+                          style={{ marginBottom: 12 }}
+                          message="名单检索节点已下线"
+                          description="请删除该节点并改用接口调用或脚本处理节点完成同类逻辑。"
+                        />
                       ) : null}
 
                       {activeNodeType === "js_script" ? (
@@ -1616,7 +1547,6 @@ export function JobScenesPage() {
               <Tag color="blue">
                 {previewScene ? getTriggerModeLabel(deriveTriggerMode(previewScene.executionMode)) : "-"}
               </Tag>
-              <Tag>{previewScene ? getRunModeLabel(derivePreviewBeforeExecute(previewScene)) : "-"}</Tag>
               <Tag>字段总数 {previewRows.length}</Tag>
               <Tag color="processing">待写入 {previewSelectedKeys.length}</Tag>
               <Tag color={previewRows.some((item) => item.abnormal) ? "red" : "green"}>
@@ -1670,6 +1600,45 @@ export function JobScenesPage() {
         </Space>
       </Modal>
 
+      <Modal
+        title={shareTargetScene ? `共享设置：${shareTargetScene.name}` : "共享设置"}
+        open={Boolean(shareTargetScene)}
+        onCancel={() => setShareTargetScene(null)}
+        onOk={() => void submitShareSettings()}
+        confirmLoading={shareSubmitting}
+        okText="保存"
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Text type="secondary">
+            创建者可设置共享范围；被共享方仅可查看并复制副本。
+          </Typography.Text>
+          <Form.Item label="共享模式" style={{ marginBottom: 0 }}>
+            <Segmented
+              value={shareModeDraft}
+              options={[
+                { label: "私有", value: "PRIVATE" },
+                { label: "共享", value: "SHARED" }
+              ]}
+              onChange={(value) => setShareModeDraft(value as ShareMode)}
+            />
+          </Form.Item>
+          {shareModeDraft === "SHARED" ? (
+            <Form.Item label="共享机构" style={{ marginBottom: 0 }}>
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="请选择可查看的机构"
+                value={shareOrgIdsDraft}
+                options={shareScopeOptions.filter((item) => item.value !== shareTargetScene?.ownerOrgId)}
+                onChange={(value) => setShareOrgIdsDraft(value as string[])}
+              />
+            </Form.Item>
+          ) : null}
+        </Space>
+      </Modal>
+
       {effectiveTarget && effectiveMeta ? (
         <EffectiveConfirmModal
           open
@@ -1683,9 +1652,17 @@ export function JobScenesPage() {
           scopeMode={effectiveScopeMode}
           scopeOrgIds={effectiveScopeOrgIds}
           scopeOptions={effectiveScopeOptions}
+          effectiveStartAt={effectiveStartAt}
+          effectiveEndAt={effectiveEndAt}
           onScopeModeChange={setEffectiveScopeMode}
           onScopeOrgIdsChange={setEffectiveScopeOrgIds}
-          onCancel={() => setEffectiveTarget(null)}
+          onEffectiveStartAtChange={setEffectiveStartAt}
+          onEffectiveEndAtChange={setEffectiveEndAt}
+          onCancel={() => {
+            setEffectiveTarget(null);
+            setEffectiveStartAt("");
+            setEffectiveEndAt("");
+          }}
           onConfirm={() => void confirmEffectiveAction()}
         />
       ) : null}

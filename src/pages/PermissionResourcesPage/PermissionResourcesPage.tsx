@@ -71,7 +71,6 @@ export function PermissionResourcesPage({ embedded = false }: { embedded?: boole
   function openCreate() {
     setEditing(null);
     form.setFieldsValue({
-      id: Date.now(),
       resourceCode: "",
       resourceName: "",
       resourceType: "MENU",
@@ -169,7 +168,6 @@ export function PermissionResourcesPage({ embedded = false }: { embedded?: boole
             { title: "排序", dataIndex: "orderNo", width: 90 },
             { title: "状态", width: 100, render: (_, row) => <Tag color={resourceStatusColor[row.status]}>{row.status}</Tag> },
             { title: "描述", dataIndex: "description", width: 220, ellipsis: true },
-            { title: "更新时间", dataIndex: "updatedAt", width: 180 },
             {
               title: "操作",
               width: 100,

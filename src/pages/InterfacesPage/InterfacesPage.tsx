@@ -8,38 +8,32 @@ import {
   Dropdown,
   Form,
   Input,
-  InputNumber,
   Modal,
   Row,
   Segmented,
   Select,
   Space,
-  Statistic,
-  Steps,
   Switch,
   Table,
   Tabs,
   Tag,
-  Typography,
-  message
+  Typography
 } from "antd";
 import type { MenuProps } from "antd";
+import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CopyOutlined, EditOutlined, MoreOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import styled from "styled-components";
-import { OrgSelect } from "../../components/DirectoryFields";
 import { EffectiveConfirmModal } from "../../components/EffectiveConfirmModal";
 import { PublishContinuationAlert } from "../../components/PublishContinuationAlert";
 import { ValidationReportPanel } from "../../components/ValidationReportPanel";
-import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlockedMessage, getPublishValidationByResource } from "../../effectiveFlow";
-import { lifecycleLabelMap, lifecycleOptions } from "../../enumLabels";
+import { EffectiveScopeMode, getEffectiveActionMeta, getEffectivePermissionBlockedMessage } from "../../effectiveFlow";
+import { lifecycleLabelMap } from "../../enumLabels";
 import { getOrgLabel, orgOptions } from "../../orgOptions";
 import { useMockSession } from "../../session/mockSession";
 import { useInterfacesPageModel } from "./useInterfacesPageModel";
 import {
-  ApiRegisterForm,
-  DebugEnv,
   InputTabKey,
   statusColor,
   tabLabels,
@@ -48,7 +42,13 @@ import {
 } from "./interfacesPageShared";
 import type { ApiOutputParam, ApiValueType, InterfaceDefinition, LifecycleState, PublishValidationReport } from "../../types";
 
-const wizardSteps = ["选用途", "基础信息", "参数示例", "在线测试", "保存"];
+export function getInterfaceEditorLayoutConfig() {
+  return {
+    hasStepWizard: false,
+    leftSections: ["接口基础信息"],
+    rightSections: ["参数示例"]
+  };
+}
 
 type EffectiveTarget = {
   id: number;
@@ -65,22 +65,7 @@ const PageHeader = styled.div`
   margin-bottom: var(--space-16);
 `;
 
-const SummaryCard = styled(Card)<{ $accent: string }>`
-  height: 100%;
-
-  &::before {
-    content: "";
-    display: block;
-    height: 4px;
-    background: ${({ $accent }) => $accent};
-  }
-
-  .ant-card-body {
-    padding-top: 14px;
-  }
-`;
-
-const ToolbarCard = styled(Card)`
+const ToolbarSection = styled.section`
   margin-bottom: var(--space-12);
 `;
 
@@ -96,10 +81,10 @@ const StepHint = styled(Alert)`
   margin-bottom: var(--space-12);
 `;
 
-const ParamWorkbenchGrid = styled.div`
+const EditorLayout = styled.div`
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: minmax(360px, 0.92fr) minmax(0, 1.48fr);
 
   @media (max-width: 1280px) {
     grid-template-columns: 1fr;
@@ -152,7 +137,7 @@ const OutputJsonPreview = styled.pre`
   line-height: 1.55;
 `;
 
-function collectPathsFromSample(value: unknown, basePath = "$.data"): string[] {
+function collectPathsFromSample(value: unknown, basePath = "$"): string[] {
   if (value === null || value === undefined) {
     return [];
   }
@@ -201,14 +186,13 @@ export function InterfacesPage() {
   const quickAction = searchParams.get("action");
   const useCase = searchParams.get("useCase");
   const autoOpenCreateRef = useRef(false);
-  const [wizardStep, setWizardStep] = useState(0);
   const [keyword, setKeyword] = useState("");
-  const [pathPreviewEnv, setPathPreviewEnv] = useState<DebugEnv>("TEST");
   const [outputEditorMode, setOutputEditorMode] = useState<"TABLE" | "JSON">("TABLE");
   const [outputPathAdvancedMode, setOutputPathAdvancedMode] = useState(false);
 
   const {
     holder,
+    msgApi,
     statusFilter,
     setStatusFilter,
     openCreate,
@@ -217,7 +201,6 @@ export function InterfacesPage() {
     openEdit,
     openClone,
     openDebug,
-    openDebugDraft,
     switchStatus,
     editing,
     drawerWidth,
@@ -242,21 +225,16 @@ export function InterfacesPage() {
     debugOpen,
     setDebugOpen,
     runDebug,
-    debugEnv,
-    setDebugEnv,
     debugPayload,
     setDebugPayload,
     debugResult,
     saveValidationReport,
-    inputValidationIssues,
-    outputValidationIssues,
     publishNotice,
     dismissPublishNotice,
     publishInterfaceNow,
     restoreInterfaceNow
   } = useInterfacesPageModel();
   const { hasResource } = useMockSession();
-  const [msgApi, msgHolder] = message.useMessage();
   const [effectiveTarget, setEffectiveTarget] = useState<EffectiveTarget | null>(null);
   const [effectiveLoading, setEffectiveLoading] = useState(false);
   const [effectiveSubmitting, setEffectiveSubmitting] = useState(false);
@@ -264,6 +242,8 @@ export function InterfacesPage() {
   const [effectiveBlockedMessage, setEffectiveBlockedMessage] = useState<string | null>(null);
   const [effectiveScopeMode, setEffectiveScopeMode] = useState<EffectiveScopeMode>("ALL_ORGS");
   const [effectiveScopeOrgIds, setEffectiveScopeOrgIds] = useState<string[]>([]);
+  const [effectiveStartAt, setEffectiveStartAt] = useState("");
+  const [effectiveEndAt, setEffectiveEndAt] = useState("");
   const effectiveMeta = effectiveTarget ? getEffectiveActionMeta(effectiveTarget.status) : null;
   const effectiveScopeOptions = useMemo(
     () => orgOptions.map((item) => ({ label: item.label, value: String(item.value) })),
@@ -295,21 +275,10 @@ export function InterfacesPage() {
       return (
         item.name.toLowerCase().includes(keywordValue) ||
         item.description.toLowerCase().includes(keywordValue) ||
-        item.testPath.toLowerCase().includes(keywordValue) ||
         item.prodPath.toLowerCase().includes(keywordValue)
       );
     });
   }, [keywordValue, visibleRows]);
-
-  const statusSummary = useMemo(() => {
-    const total = visibleRows.length;
-    const draft = visibleRows.filter((item) => item.status === "DRAFT").length;
-    const active = visibleRows.filter((item) => item.status === "ACTIVE").length;
-    const disabled = visibleRows.filter((item) => item.status === "DISABLED").length;
-    return { total, draft, active, disabled };
-  }, [visibleRows]);
-
-  const previewPath = Form.useWatch(pathPreviewEnv === "TEST" ? "testPath" : "prodPath", form);
 
   const pathAssistOptions = useMemo(() => {
     const set = new Set<string>();
@@ -323,11 +292,7 @@ export function InterfacesPage() {
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as unknown;
-        const base =
-          parsed && typeof parsed === "object" && !Array.isArray(parsed) && "data" in (parsed as Record<string, unknown>)
-            ? (parsed as Record<string, unknown>).data
-            : parsed;
-        for (const path of collectPathsFromSample(base, "$.data")) {
+        for (const path of collectPathsFromSample(parsed, "$")) {
           if (path.trim()) {
             set.add(path.trim());
           }
@@ -350,9 +315,9 @@ export function InterfacesPage() {
   const buildSuggestedPath = (name: string): string => {
     const trimmed = name.trim();
     if (!trimmed) {
-      return "$.data";
+      return "$";
     }
-    return `$.data.${trimmed}`;
+    return `$.${trimmed}`;
   };
 
   const outputEditorRows = useMemo<OutputEditorRow[]>(() => {
@@ -375,23 +340,21 @@ export function InterfacesPage() {
   }, [openCreate, ownerOrgFilter, quickAction, useCase]);
 
   useEffect(() => {
+    if (drawerOpen && editing) {
+      // 编辑已有接口：确保表单值正确填入，解决 DOM 重新挂载后值丢失的问题
+      form.setFieldsValue({
+        name: editing.name,
+        description: editing.description,
+        method: editing.method,
+        prodPath: editing.prodPath,
+        bodyTemplateJson: editing.bodyTemplateJson
+      });
+    }
     if (drawerOpen) {
-      setWizardStep(0);
-      setPathPreviewEnv("TEST");
       setOutputEditorMode("TABLE");
       setOutputPathAdvancedMode(false);
     }
-  }, [drawerOpen]);
-
-  async function goNextStep() {
-    if (wizardStep === 0) {
-      await form.validateFields(["name", "description", "method"]);
-    }
-    if (wizardStep === 1) {
-      await form.validateFields(["testPath", "prodPath", "timeoutMs", "retryTimes", "status", "ownerOrgId"]);
-    }
-    setWizardStep((prev) => Math.min(prev + 1, wizardSteps.length - 1));
-  }
+  }, [drawerOpen, editing, form]);
 
   function useTemplateCreate() {
     openCreate({
@@ -399,19 +362,8 @@ export function InterfacesPage() {
       name: "客户信息查询模板",
       description: "用于表单辅助录入的通用查询接口模板。",
       method: "POST",
-      testPath: "/test/customer/profile/query",
       prodPath: "/customer/profile/query"
     });
-  }
-
-  function copyTestPathToProd() {
-    const testPath = form.getFieldValue("testPath");
-    if (!testPath || !String(testPath).trim()) {
-      msgApi.warning("请先填写测试环境路径");
-      return;
-    }
-    form.setFieldValue("prodPath", String(testPath).trim());
-    msgApi.success("已复制测试路径到生产路径");
   }
 
   function buildRowMenuItems(row: InterfaceDefinition): MenuProps["items"] {
@@ -456,23 +408,25 @@ export function InterfacesPage() {
     setEffectiveBlockedMessage(null);
     setEffectiveScopeMode("ALL_ORGS");
     setEffectiveScopeOrgIds([]);
+    setEffectiveStartAt(dayjs().format("YYYY-MM-DD HH:mm"));
+    setEffectiveEndAt("");
 
     if (action.type !== "PUBLISH") {
       return;
     }
-    setEffectiveLoading(true);
-    try {
-      const validation = await getPublishValidationByResource("INTERFACE", target.id);
-      if (!validation) {
-        setEffectiveBlockedMessage("当前对象没有待发布版本，请先保存草稿。");
-        return;
-      }
-      setEffectiveValidationReport(validation.report);
-    } catch (error) {
-      setEffectiveBlockedMessage(error instanceof Error ? error.message : "加载生效检查结果失败");
-    } finally {
-      setEffectiveLoading(false);
-    }
+    setEffectiveValidationReport({
+      pass: true,
+      items: [
+        {
+          key: "instant_publish",
+          label: "即时生效",
+          passed: true,
+          detail: "当前模式为保存即生效，无需待发布步骤"
+        }
+      ],
+      blockingCount: 0,
+      warningCount: 0
+    });
   }
 
   async function confirmEffectiveAction() {
@@ -488,8 +442,6 @@ export function InterfacesPage() {
           effectiveScopeMode === "CUSTOM_ORGS" ? effectiveScopeOrgIds : []
         );
         if (!success) {
-          const validation = await getPublishValidationByResource("INTERFACE", effectiveTarget.id);
-          setEffectiveValidationReport(validation?.report ?? null);
           return;
         }
       } else {
@@ -517,6 +469,8 @@ export function InterfacesPage() {
       setEffectiveTarget(null);
       setEffectiveValidationReport(null);
       setEffectiveBlockedMessage(null);
+      setEffectiveStartAt("");
+      setEffectiveEndAt("");
     } finally {
       setEffectiveSubmitting(false);
     }
@@ -577,7 +531,7 @@ export function InterfacesPage() {
                     options={pathAssistOptions}
                     value={displayPath}
                     onChange={(value) => patchRow(row, { path: value, pathMode: "MANUAL" })}
-                    placeholder="如 $.data.score"
+                    placeholder="如 $.score"
                   />
                   <Space size={6} wrap>
                     <Tag color={isManualPath ? "gold" : "blue"}>{isManualPath ? "手动路径" : "自动路径"}</Tag>
@@ -636,7 +590,6 @@ export function InterfacesPage() {
   return (
     <div>
       {holder}
-      {msgHolder}
       <PageHeader>
         <Typography.Title level={4}>API注册</Typography.Title>
       </PageHeader>
@@ -668,37 +621,14 @@ export function InterfacesPage() {
           description="该过滤来自菜单管理详情中的“新建关联 API”快捷动作。"
         />
       ) : null}
-      <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #33577a 0%, #5d7896 100%)">
-            <Statistic title="接口总数" value={statusSummary.total} />
-          </SummaryCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #4a617a 0%, #7387a0 100%)">
-            <Statistic title="草稿接口" value={statusSummary.draft} />
-          </SummaryCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #4e6f5d 0%, #759281 100%)">
-            <Statistic title="已生效" value={statusSummary.active} />
-          </SummaryCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <SummaryCard $accent="linear-gradient(90deg, #7f6a49 0%, #a18a63 100%)">
-            <Statistic title="已停用" value={statusSummary.disabled} />
-          </SummaryCard>
-        </Col>
-      </Row>
-
-      <ToolbarCard>
+      <ToolbarSection>
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} lg={10}>
             <Input.Search
               allowClear
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索 API 名称、用途、测试路径或生产路径"
+              placeholder="搜索 API 名称、用途或生产路径"
             />
           </Col>
           <Col xs={24} lg={14}>
@@ -722,7 +652,7 @@ export function InterfacesPage() {
             </ActionBar>
           </Col>
         </Row>
-      </ToolbarCard>
+      </ToolbarSection>
 
       <Card
         extra={
@@ -739,28 +669,20 @@ export function InterfacesPage() {
             { title: "接口用途", dataIndex: "description", width: 220 },
             {
               title: "方法与路径",
-              width: 320,
+              width: 280,
               render: (_, row) => (
-                <Space direction="vertical" size={4}>
-                  <Space>
-                    <Tag color="geekblue">{row.method}</Tag>
-                    <Typography.Text>{row.testPath || "-"}</Typography.Text>
-                    <Tag>测试</Tag>
-                  </Space>
-                  <Space>
-                    <Tag color="cyan">{row.method}</Tag>
-                    <Typography.Text>{row.prodPath || "-"}</Typography.Text>
-                    <Tag color="green">生产</Tag>
-                  </Space>
+                <Space>
+                  <Tag color="cyan">{row.method}</Tag>
+                  <Typography.Text>{row.prodPath || "-"}</Typography.Text>
                 </Space>
               )
             },
             {
               title: "引用关系",
               width: 240,
-              render: (_, row) => (
+              render: () => (
                 <Space size={[4, 4]} wrap>
-                  <Tag>{`页面(${getOrgLabel(row.ownerOrgId)})`}</Tag>
+                  <Tag>页面</Tag>
                   <Tag>规则(2)</Tag>
                   <Tag>作业(1)</Tag>
                 </Space>
@@ -819,270 +741,147 @@ export function InterfacesPage() {
         onClose={closeDrawer}
         destroyOnClose
         extra={
-          <Space>
-            <Button onClick={() => setWizardStep((prev) => Math.max(prev - 1, 0))} disabled={wizardStep === 0}>
-              上一步
-            </Button>
-            {wizardStep < wizardSteps.length - 1 ? (
-              <Button type="primary" onClick={() => void goNextStep()}>
-                下一步
-              </Button>
-            ) : (
-              <Button type="primary" onClick={() => void submit()}>
-                保存接口
-              </Button>
-            )}
-          </Space>
+          <Button type="primary" onClick={() => void submit()}>
+            保存接口
+          </Button>
         }
       >
-        <Steps
-          current={wizardStep}
-          size="small"
-          style={{ marginBottom: 12 }}
-          items={wizardSteps.map((title) => ({ title }))}
-        />
-
         <Form form={form} layout="vertical">
-          {wizardStep === 0 ? (
-            <ValidationReportPanel report={saveValidationReport} sections={["purpose"]} title="当前步骤还有待处理问题" />
-          ) : null}
-
-          {wizardStep === 0 ? (
-            <Card title="步骤 1：选用途" size="small">
-              <StepHint
-                showIcon
-                type="info"
-                message="建议先写清楚用途与调用对象"
-              />
-              <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]}>
-                <Input maxLength={128} />
-              </Form.Item>
-              <Form.Item name="description" label="用途说明" rules={[{ required: true, message: "请输入用途说明" }]}>
-                <Input.TextArea rows={3} maxLength={300} />
-              </Form.Item>
-              <Form.Item name="method" label="调用方式" rules={[{ required: true, message: "请选择方法" }]}>
-                <Select options={["GET", "POST", "PUT", "DELETE"].map((v) => ({ label: v, value: v }))} />
-              </Form.Item>
-              <Space>
-                <Button onClick={useTemplateCreate}>从常用模板创建</Button>
-              </Space>
-            </Card>
-          ) : null}
-
-          {wizardStep === 1 ? (
-            <ValidationReportPanel report={saveValidationReport} sections={["basic"]} title="基础信息还有待处理问题" />
-          ) : null}
-
-          {wizardStep === 1 ? (
-            <Card title="步骤 2：填基础信息" size="small">
-              <StepHint
-                showIcon
-                type="info"
-                message="测试路径和生产路径建议同时维护"
-              />
-              <Row gutter={12}>
-                <Col span={24}>
-                  <Form.Item name="ownerOrgId" label="机构范围" rules={[{ required: true, message: "请选择机构范围" }]}>
-                    <OrgSelect />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={12}>
-                <Col span={12}>
-                  <Form.Item name="testPath" label="测试环境路径" rules={[{ required: true, message: "请输入测试路径" }]}>
-                    <Input placeholder="如 /test/risk/score/query" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="prodPath" label="生产环境路径" rules={[{ required: true, message: "请输入生产路径" }]}>
-                    <Input placeholder="如 /risk/score/query" />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Space style={{ marginBottom: 12 }} wrap>
-                <Segmented
-                  value={pathPreviewEnv}
-                  onChange={(value) => setPathPreviewEnv(value as DebugEnv)}
-                  options={[
-                    { label: "测试路径预览", value: "TEST" },
-                    { label: "生产路径预览", value: "PROD" }
-                  ]}
-                />
-                <Button icon={<CopyOutlined />} onClick={copyTestPathToProd}>
-                  测试路径复制到生产
-                </Button>
-                <Typography.Text type="secondary">
-                  当前预览：{previewPath || "-"}
-                </Typography.Text>
-              </Space>
-              <Row gutter={12}>
-                <Col span={8}>
-                  <Form.Item name="timeoutMs" label="超时(ms)" rules={[{ required: true, message: "请输入超时" }]}>
-                    <InputNumber min={1} max={5000} style={{ width: "100%" }} />
-                  </Form.Item>
-                </Col>
-                <Col span={8}>
-                  <Form.Item name="retryTimes" label="重试次数" rules={[{ required: true, message: "请输入重试次数" }]}>
-                    <InputNumber min={0} max={3} style={{ width: "100%" }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item name="status" label="状态" rules={[{ required: true, message: "请选择状态" }]}>
-                <Select options={lifecycleOptions} />
-              </Form.Item>
-              <Form.Item name="maskSensitive" label="敏感字段脱敏" valuePropName="checked">
-                <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-              </Form.Item>
-            </Card>
-          ) : null}
-
-          {wizardStep === 2 ? (
+          <EditorLayout>
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
               <ValidationReportPanel
                 report={saveValidationReport}
-                sections={["params"]}
-                title="参数示例还有待处理问题"
+                sections={["purpose", "basic"]}
+                title="基础信息还有待处理问题"
               />
-              <ValidationReportPanel issues={inputValidationIssues} title="请求参数还有待处理问题" />
-              <ValidationReportPanel issues={outputValidationIssues} title="返回参数还有待处理问题" />
-              <ParamWorkbenchGrid>
-                <WorkbenchCard
-                  title={
-                    <Space size={8} wrap>
-                      <Typography.Text strong>步骤 3：填参数示例</Typography.Text>
-                      <Tag color="blue">请求参数 {requestParamTotal}</Tag>
-                    </Space>
-                  }
-                  size="small"
-                >
-                  <StepHint
-                    showIcon
-                    type="info"
-                    message="Body JSON 是唯一结构来源"
-                  />
-                  <StatStrip>
-                    <StatTile $accent="linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%)">
-                      <Typography.Text type="secondary">请求参数总数</Typography.Text>
-                      <Typography.Title level={5} style={{ margin: 0 }}>{requestParamTotal}</Typography.Title>
-                    </StatTile>
-                    <StatTile $accent="linear-gradient(180deg, #f2f6f3 0%, #ffffff 100%)">
-                      <Typography.Text type="secondary">Body 字段数</Typography.Text>
-                      <Typography.Title level={5} style={{ margin: 0 }}>{inputConfig.body.length}</Typography.Title>
-                    </StatTile>
-                    <StatTile $accent="linear-gradient(180deg, #f9f5ee 0%, #ffffff 100%)">
-                      <Typography.Text type="secondary">返回字段数</Typography.Text>
-                      <Typography.Title level={5} style={{ margin: 0 }}>{outputConfig.length}</Typography.Title>
-                    </StatTile>
-                  </StatStrip>
-                  <Tabs
-                    activeKey={inputTab}
-                    onChange={(key) => setInputTab(key as InputTabKey)}
-                    items={(Object.keys(tabLabels) as InputTabKey[]).map((tab) => ({
-                      key: tab,
-                      label: `${tabLabels[tab]} (${inputConfig[tab].length})`,
-                      children: (
-                        <div>
-                          {tab === "body" ? (
-                            <>
-                              <Form.Item name="bodyTemplateJson" label="Body JSON 模板">
-                                <Input.TextArea rows={6} placeholder="支持 JSON 解析为 Body 参数" />
-                              </Form.Item>
-                              <Alert
-                                showIcon
-                                type="info"
-                                style={{ marginBottom: 12 }}
-                                message="结构调整请修改 Body JSON 后重新解析"
-                              />
-                              <Space style={{ marginBottom: 12 }}>
-                                <Button type="primary" onClick={parseBodyTemplate}>解析并重建结构</Button>
-                                <Typography.Text type="secondary">当前 Body 参数数：{inputConfig.body.length}</Typography.Text>
-                              </Space>
-                            </>
-                          ) : (
-                            <Button style={{ marginBottom: 12 }} onClick={() => addInputRow(tab)}>
-                              新增{tabLabels[tab]}参数
-                            </Button>
-                          )}
-
-                          <Table size="small" rowKey="id" pagination={false} columns={inputColumns(tab)} dataSource={inputConfig[tab]} />
-                        </div>
-                      )
-                    }))}
-                  />
-                </WorkbenchCard>
-
-                <WorkbenchCard
-                  title={
-                    <Space size={8} wrap>
-                      <Typography.Text strong>返回参数示例</Typography.Text>
-                      <Tag color="cyan">根字段 {outputConfig.length}</Tag>
-                    </Space>
-                  }
-                  size="small"
-                  extra={
-                    <Space size={8}>
-                      <Segmented
-                        value={outputEditorMode}
-                        onChange={(value) => setOutputEditorMode(value as "TABLE" | "JSON")}
-                        options={[
-                          { label: "结构编辑", value: "TABLE" },
-                          { label: "JSON预览", value: "JSON" }
-                        ]}
-                      />
-                      <Button onClick={addOutputRow}>新增出参</Button>
-                    </Space>
-                  }
-                >
-                  <Alert
-                    showIcon
-                    type={outputPathAdvancedMode ? "warning" : "info"}
-                    message={outputPathAdvancedMode ? "高级模式：可手动改路径" : "默认模式：路径自动生成"}
-                  />
-                  <Space style={{ marginTop: 8 }} wrap>
-                    <Switch checked={outputPathAdvancedMode} onChange={setOutputPathAdvancedMode} />
-                    <Typography.Text type="secondary">高级路径编辑</Typography.Text>
-                  </Space>
-                  <Input.TextArea
-                    rows={5}
-                    value={outputSampleJson}
-                    onChange={(event) => setOutputSampleJson(event.target.value)}
-                    placeholder="粘贴返回 JSON 示例"
-                  />
-                  <Space style={{ marginTop: 8, marginBottom: 12 }}>
-                    <Button onClick={parseOutputSample}>解析返回 JSON</Button>
-                    <Typography.Text type="secondary">路径建议数：{pathAssistOptions.length}</Typography.Text>
-                  </Space>
-
-                  {outputEditorMode === "TABLE" ? (
-                    renderOutputEditorTable(outputEditorRows)
-                  ) : (
-                    <OutputJsonPreview>{JSON.stringify(outputConfig, null, 2)}</OutputJsonPreview>
-                  )}
-                </WorkbenchCard>
-              </ParamWorkbenchGrid>
+              <Card title="接口基础信息" size="small">
+                <StepHint
+                  showIcon
+                  type="info"
+                  message="用途与生产路径在同一区域维护，便于一次性提交。"
+                />
+                <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]}>
+                  <Input maxLength={128} />
+                </Form.Item>
+                <Form.Item name="description" label="用途说明" rules={[{ required: true, message: "请输入用途说明" }]}>
+                  <Input.TextArea rows={3} maxLength={300} />
+                </Form.Item>
+                <Form.Item name="method" label="调用方式" rules={[{ required: true, message: "请选择方法" }]}>
+                  <Select options={["GET", "POST"].map((v) => ({ label: v, value: v }))} />
+                </Form.Item>
+                <Form.Item name="prodPath" label="生产环境路径" rules={[{ required: true, message: "请输入生产路径" }]}>
+                  <Input placeholder="如 /risk/score/query" />
+                </Form.Item>
+                <Space>
+                  <Button onClick={useTemplateCreate}>从常用模板创建</Button>
+                </Space>
+              </Card>
             </Space>
-          ) : null}
 
-          {wizardStep === 3 ? (
-            <Card title="步骤 4：在线测试" size="small">
-              <Space>
-                <Button type="primary" onClick={openDebugDraft}>
-                  使用当前草稿在线测试
-                </Button>
-                {editing ? (
-                  <Button onClick={() => openDebug(editing)}>
-                    使用已保存版本测试
-                  </Button>
-                ) : null}
-              </Space>
-            </Card>
-          ) : null}
+            <Space direction="vertical" style={{ width: "100%" }} size={12}>
+              <Card title="参数示例" size="small">
+                <Space direction="vertical" style={{ width: "100%" }} size={12}>
+                  <WorkbenchCard
+                    title={
+                      <Space size={8} wrap>
+                        <Typography.Text strong>请求参数示例</Typography.Text>
+                        <Tag color="blue">请求参数 {requestParamTotal}</Tag>
+                      </Space>
+                    }
+                    size="small"
+                  >
+                    <StatStrip>
+                      <StatTile $accent="linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%)">
+                        <Typography.Text type="secondary">请求参数总数</Typography.Text>
+                        <Typography.Title level={5} style={{ margin: 0 }}>{requestParamTotal}</Typography.Title>
+                      </StatTile>
+                      <StatTile $accent="linear-gradient(180deg, #f2f6f3 0%, #ffffff 100%)">
+                        <Typography.Text type="secondary">Body 字段数</Typography.Text>
+                        <Typography.Title level={5} style={{ margin: 0 }}>{inputConfig.body.length}</Typography.Title>
+                      </StatTile>
+                      <StatTile $accent="linear-gradient(180deg, #f9f5ee 0%, #ffffff 100%)">
+                        <Typography.Text type="secondary">返回字段数</Typography.Text>
+                        <Typography.Title level={5} style={{ margin: 0 }}>{outputConfig.length}</Typography.Title>
+                      </StatTile>
+                    </StatStrip>
+                    <Tabs
+                      activeKey={inputTab}
+                      onChange={(key) => setInputTab(key as InputTabKey)}
+                      items={(Object.keys(tabLabels) as InputTabKey[]).map((tab) => ({
+                        key: tab,
+                        label: `${tabLabels[tab]} (${inputConfig[tab].length})`,
+                        children: (
+                          <div>
+                            {tab === "body" ? (
+                              <>
+                                <Form.Item name="bodyTemplateJson" label="Body JSON 模板">
+                                  <Input.TextArea rows={6} placeholder="支持 JSON 解析为 Body 参数" />
+                                </Form.Item>
+                                <Space style={{ marginBottom: 12 }}>
+                                  <Button type="primary" onClick={parseBodyTemplate}>解析并重建结构</Button>
+                                  <Typography.Text type="secondary">当前 Body 参数数：{inputConfig.body.length}</Typography.Text>
+                                </Space>
+                              </>
+                            ) : (
+                              <Button style={{ marginBottom: 12 }} onClick={() => addInputRow(tab)}>
+                                新增{tabLabels[tab]}参数
+                              </Button>
+                            )}
 
-          {wizardStep === 4 ? (
-            <Card title="步骤 5：保存前确认" size="small">
-              <DescriptionsSummary form={form} outputCount={outputConfig.length} report={saveValidationReport} />
-            </Card>
-          ) : null}
+                            <Table size="small" rowKey="id" pagination={false} columns={inputColumns(tab)} dataSource={inputConfig[tab]} />
+                          </div>
+                        )
+                      }))}
+                    />
+                  </WorkbenchCard>
+
+                  <WorkbenchCard
+                    title={
+                      <Space size={8} wrap>
+                        <Typography.Text strong>返回参数示例</Typography.Text>
+                        <Tag color="cyan">根字段 {outputConfig.length}</Tag>
+                      </Space>
+                    }
+                    size="small"
+                    extra={
+                      <Space size={8}>
+                        <Segmented
+                          value={outputEditorMode}
+                          onChange={(value) => setOutputEditorMode(value as "TABLE" | "JSON")}
+                          options={[
+                            { label: "结构编辑", value: "TABLE" },
+                            { label: "JSON预览", value: "JSON" }
+                          ]}
+                        />
+                        <Button onClick={addOutputRow}>新增出参</Button>
+                      </Space>
+                    }
+                  >
+                    <Space style={{ marginTop: 8 }} wrap>
+                      <Switch checked={outputPathAdvancedMode} onChange={setOutputPathAdvancedMode} />
+                      <Typography.Text type="secondary">高级路径编辑</Typography.Text>
+                    </Space>
+                    <Input.TextArea
+                      rows={5}
+                      value={outputSampleJson}
+                      onChange={(event) => setOutputSampleJson(event.target.value)}
+                      placeholder="粘贴返回 JSON 示例"
+                    />
+                    <Space style={{ marginTop: 8, marginBottom: 12 }}>
+                      <Button onClick={parseOutputSample}>解析返回 JSON</Button>
+                      <Typography.Text type="secondary">路径建议数：{pathAssistOptions.length}</Typography.Text>
+                    </Space>
+
+                    {outputEditorMode === "TABLE" ? (
+                      renderOutputEditorTable(outputEditorRows)
+                    ) : (
+                      <OutputJsonPreview>{JSON.stringify(outputConfig, null, 2)}</OutputJsonPreview>
+                    )}
+                  </WorkbenchCard>
+                </Space>
+              </Card>
+            </Space>
+          </EditorLayout>
         </Form>
       </Drawer>
 
@@ -1095,19 +894,11 @@ export function InterfacesPage() {
         okText="执行测试"
       >
         <Space direction="vertical" style={{ width: "100%" }}>
-          <Card size="small" title="测试环境">
+          <Card size="small" title="请求路径">
             <Space>
-              <Segmented
-                value={debugEnv}
-                onChange={(value) => setDebugEnv(value as DebugEnv)}
-                options={[
-                  { label: "测试环境", value: "TEST" },
-                  { label: "生产环境", value: "PROD" }
-                ]}
-              />
               <Typography.Text type="secondary">
                 请求路径：
-                {debugTarget ? (debugEnv === "TEST" ? debugTarget.testPath : debugTarget.prodPath) : "-"}
+                {debugTarget?.prodPath ?? "-"}
               </Typography.Text>
             </Space>
           </Card>
@@ -1151,35 +942,21 @@ export function InterfacesPage() {
           scopeMode={effectiveScopeMode}
           scopeOrgIds={effectiveScopeOrgIds}
           scopeOptions={effectiveScopeOptions}
+          effectiveStartAt={effectiveStartAt}
+          effectiveEndAt={effectiveEndAt}
           onScopeModeChange={setEffectiveScopeMode}
           onScopeOrgIdsChange={setEffectiveScopeOrgIds}
-          onCancel={() => setEffectiveTarget(null)}
+          onEffectiveStartAtChange={setEffectiveStartAt}
+          onEffectiveEndAtChange={setEffectiveEndAt}
+          onCancel={() => {
+            setEffectiveTarget(null);
+            setEffectiveStartAt("");
+            setEffectiveEndAt("");
+          }}
           onConfirm={() => void confirmEffectiveAction()}
         />
       ) : null}
     </div>
-  );
-}
-
-function DescriptionsSummary({ form, outputCount, report }: { form: any; outputCount: number; report: any }) {
-  const values = form.getFieldsValue() as Partial<ApiRegisterForm>;
-  return (
-    <Space direction="vertical" style={{ width: "100%" }}>
-      <ValidationReportPanel report={report} title="保存前检查结果" />
-      <Alert
-        showIcon
-        type="info"
-        message="确认后保存"
-      />
-      <Space wrap>
-        <Tag color="blue">{values.name || "未命名接口"}</Tag>
-        <Tag>{values.method || "POST"}</Tag>
-        <Tag>{getOrgLabel(values.ownerOrgId)}</Tag>
-        <Tag color="purple">出参字段 {outputCount}</Tag>
-      </Space>
-      <Typography.Text type="secondary">测试路径：{values.testPath || "-"}</Typography.Text>
-      <Typography.Text type="secondary">生产路径：{values.prodPath || "-"}</Typography.Text>
-    </Space>
   );
 }
 

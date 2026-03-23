@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r -n \"//.*\\\\|/*.*\\\\*/\" .)",
+      "Bash(xargs grep:*)",
+      "Bash(grep:*)",
+      "Bash(grep -r -n \"//.*\\(\" --include=\"*.ts\" --include=\"*.tsx\" --exclude-dir=node_modules .)"
+    ]
+  }
+}

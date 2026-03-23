@@ -236,15 +236,14 @@ export function RolesPage({ embedded = false }: { embedded?: boolean }) {
   async function submit() {
     try {
       const values = await form.validateFields();
-      const roleId = editing?.id ?? Date.now();
-      await configCenterService.upsertRole({
-        id: roleId,
+      const savedRole = await configCenterService.upsertRole({
+        ...(editing ? { id: editing.id } : {}),
         name: values.name.trim(),
         roleType: values.roleType,
         status: values.status,
         orgScopeId: values.orgScopeId.trim()
       });
-      await configCenterService.saveRoleResourceGrants(roleId, values.resourceCodes);
+      await configCenterService.saveRoleResourceGrants(savedRole.id, values.resourceCodes);
       msgApi.success(editing ? "角色已更新" : "角色已创建");
       setOpen(false);
       await loadData();
@@ -357,7 +356,6 @@ export function RolesPage({ embedded = false }: { embedded?: boolean }) {
               width: 100,
               render: (_, row) => <Tag color={statusColor[row.status]}>{lifecycleLabelMap[row.status]}</Tag>
             },
-            { title: "更新时间", dataIndex: "updatedAt", width: 180 },
             {
               title: "操作",
               width: 320,

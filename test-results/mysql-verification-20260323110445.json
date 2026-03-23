@@ -1,0 +1,156 @@
+﻿{
+    "timestamp":  "2026-03-23 11:06:24",
+    "mode":  "mysql",
+    "total":  24,
+    "passed":  0,
+    "failed":  24,
+    "passes":  [
+
+               ],
+    "issues":  [
+                   {
+                       "module":  "Health",
+                       "step":  "backend mysql health check",
+                       "status":  "FAIL",
+                       "detail":  "无法连接到远程服务器"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page menu + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page resource + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page element + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create business field + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page-field binding + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Interface",
+                       "step":  "create interface + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Interface",
+                       "step":  "update interface status + echo",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Rule",
+                       "step":  "create rule + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Rule",
+                       "step":  "rule share/status/preview + condition workflow",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "JobScene",
+                       "step":  "create scene + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "JobScene",
+                       "step":  "scene share/status/clone + node workflow",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "DataProcessor",
+                       "step":  "create processor + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "DataProcessor",
+                       "step":  "update processor status",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "ContextVariable",
+                       "step":  "create variable + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "ContextVariable",
+                       "step":  "update variable status",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "create general config + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "create menu sdk policy + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Permission",
+                       "step":  "create resource + role + grants + members + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Permission",
+                       "step":  "clone role + toggle status + session echo",
+                       "status":  "FAIL",
+                       "detail":  "无法连接到远程服务器"
+                   },
+                   {
+                       "module":  "Publish",
+                       "step":  "publish validate/logs + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "Unable to connect to the remote server"
+                   },
+                   {
+                       "module":  "Runtime",
+                       "step":  "prompt/job runtime logs endpoints",
+                       "status":  "FAIL",
+                       "detail":  "无法连接到远程服务器"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "dashboard summary endpoints",
+                       "status":  "FAIL",
+                       "detail":  "无法连接到远程服务器"
+                   },
+                   {
+                       "module":  "FrontendContract",
+                       "step":  "instant-publish no pending-items contract required",
+                       "status":  "FAIL",
+                       "detail":  "无法连接到远程服务器"
+                   }
+               ]
+}

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowService } from "./workflowService";
 
 function nowSuffix() {
@@ -6,6 +6,60 @@ function nowSuffix() {
 }
 
 describe("workflowService script node execution", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  let nodes: Array<{
+    id: number;
+    sceneId: number;
+    nodeType: "page_get" | "api_call" | "list_lookup" | "js_script" | "page_set" | "page_click" | "send_hotkey";
+    name: string;
+    orderNo: number;
+    enabled: boolean;
+    configJson: string;
+    updatedAt: string;
+  }> = [];
+
+  function jsonResponse(body: unknown) {
+    return new Response(JSON.stringify({ returnCode: "OK", errorMsg: "success", body }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  beforeEach(() => {
+    nodes = [];
+    fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/api/control/job-scenes/") && url.endsWith("/nodes") && method === "POST") {
+          const sceneId = Number(url.split("/").slice(-2, -1)[0]);
+          const payload = JSON.parse(String(init?.body ?? "{}")) as {
+            id?: number;
+            nodeType: typeof nodes[number]["nodeType"];
+            name: string;
+            orderNo: number;
+            enabled: boolean;
+            configJson: string;
+          };
+          const next = {
+            id: payload.id ?? (nodes.length === 0 ? 1 : Math.max(...nodes.map((item) => item.id)) + 1),
+            sceneId,
+            nodeType: payload.nodeType,
+            name: payload.name,
+            orderNo: payload.orderNo,
+            enabled: payload.enabled,
+            configJson: payload.configJson,
+            updatedAt: new Date().toISOString()
+          };
+          nodes = nodes.some((item) => item.id === next.id)
+            ? nodes.map((item) => (item.id === next.id ? next : item))
+            : [next, ...nodes];
+          return jsonResponse(next);
+        }
+        throw new Error(`Unexpected fetch: ${method} ${url}`);
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+
   it("resolves script outputs and allows downstream page_set to reference them", async () => {
     const suffix = nowSuffix();
     const sceneId = 980000 + suffix;
@@ -108,5 +162,27 @@ describe("workflowService script node execution", () => {
     expect(hotkeyLog?.detail).toContain("发送热键");
     expect(hotkeyLog?.detail).toContain("CTRL+SHIFT+A");
     expect(hotkeyLog?.detail).toContain("17,16,65");
+  });
+
+  it("omits id in create payload when caller does not provide id", async () => {
+    const sceneId = 991001;
+
+    await workflowService.upsertJobNode({
+      sceneId,
+      nodeType: "page_get",
+      name: "页面取值创建校验",
+      orderNo: 1,
+      enabled: true,
+      configJson: JSON.stringify({ field: "customer_id" })
+    });
+
+    const createCall = fetchSpy.mock.calls.find(([input, init]) => {
+      const url = String(input);
+      const method = String(init?.method ?? "GET").toUpperCase();
+      return url === `/api/control/job-scenes/${sceneId}/nodes` && method === "POST";
+    });
+    expect(createCall).toBeTruthy();
+    const payload = JSON.parse(String(createCall?.[1]?.body ?? "{}")) as { id?: number };
+    expect(payload.id).toBeUndefined();
   });
 });

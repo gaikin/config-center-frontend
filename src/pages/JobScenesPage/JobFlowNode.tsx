@@ -9,10 +9,27 @@ type JobFlowCanvasNode = Node<FlowNodeData, "jobNode">;
 const NodeWrapper = styled.div`
   position: relative;
   width: 100%;
-  min-height: 64px;
-  padding: 10px 34px 10px 12px;
+  min-height: 68px;
+  padding: 8px 34px 10px 12px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+`;
+
+const NodeContent = styled.div`
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+`;
+
+const NodeTypeLabel = styled.div`
+  width: 100%;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: break-word;
 `;
 
 const NodeLabel = styled.div`
@@ -45,7 +62,10 @@ export function JobFlowNode(props: NodeProps<JobFlowCanvasNode>) {
   return (
     <NodeWrapper>
       <Handle type="target" position={Position.Left} />
-      <NodeLabel>{props.data.label}</NodeLabel>
+      <NodeContent>
+        <NodeTypeLabel>{props.data.typeLabel}</NodeTypeLabel>
+        <NodeLabel>{props.data.label}</NodeLabel>
+      </NodeContent>
       {props.data.onDelete ? (
         <Tooltip title="删除节点">
           <DeleteButton

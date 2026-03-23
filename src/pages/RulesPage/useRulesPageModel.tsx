@@ -1,5 +1,6 @@
 import { Form, Grid, Modal, message } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { evaluateContextVariableValue } from "../../contextVariables";
 import { getOrgLabel } from "../../orgOptions";
 import { configCenterService } from "../../services/configCenterService";
 import { workflowService } from "../../services/workflowService";
@@ -8,25 +9,25 @@ import { createFieldIssue, validateRuleDraftPayload } from "../../validation/for
 import { parsePromptContentConfig, stringifyPromptContentConfig } from "../../promptContent";
 import type {
   BusinessFieldDefinition,
+  ContextVariableDefinition,
   FieldValidationIssue,
   InterfaceDefinition,
   JobSceneDefinition,
   LifecycleState,
-  ListDataDefinition,
   PageFieldBinding,
+  PageMenu,
   PageResource,
-  PreprocessorDefinition,
+  DataProcessorDefinition,
   RuleConditionGroup,
   RuleDefinition,
   RuleLogicType,
   RuleOperandSourceType,
-  RuleListLookupCondition,
   SaveValidationReport
 } from "../../types";
 import type { InterfaceInputBindingDraft, OperandDraft, OperandSide, PromptVariableOption } from "./rulesPageShared";
 import {
   buildDefaultCondition,
-  buildPreprocessorId,
+  buildDataProcessorId,
   collectInterfaceInputParams,
   collectOutputPathMeta,
   contextOptions,
@@ -37,7 +38,7 @@ import {
   normalizeOperator,
   parseInterfaceInputConfig,
   parseJsonSafe,
-  PreprocessorDraft,
+  DataProcessorDraft,
   resetOperandBySource,
   RulePageFieldOption,
   RuleForm,
@@ -70,42 +71,19 @@ type PublishNotice = {
   resourceId: number;
 };
 
-function cloneListLookupConditions(conditions: RuleDefinition["listLookupConditions"] = []): RuleListLookupCondition[] {
-  return conditions.map((item) => ({ ...item }));
-}
-
-function buildDefaultListLookupCondition(listDatas: ListDataDefinition[]): RuleListLookupCondition {
-  const picked = listDatas[0];
-  return {
-    id: createId("list-lookup"),
-    sourceType: "PAGE_FIELD",
-    sourceValue: "",
-    listDataId: picked?.id,
-    listDataName: picked?.name,
-    matchColumn: picked?.importColumns[0] ?? "",
-    judgement: "MATCHED"
-  };
-}
-
-function toRuleDraftPayload(row: RuleDefinition): RuleDefinition {
-  return {
-    ...row,
-    status: "DRAFT"
-  };
-}
-
 export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: RulesPageOptions = {}) {
   const screens = Grid.useBreakpoint();
   const logicDrawerWidth = getRightOverlayDrawerWidth(Boolean(screens.lg));
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<RuleDefinition[]>([]);
   const [resources, setResources] = useState<PageResource[]>([]);
+  const [pageMenus, setPageMenus] = useState<PageMenu[]>([]);
   const [businessFields, setBusinessFields] = useState<BusinessFieldDefinition[]>([]);
   const [pageFieldBindings, setPageFieldBindings] = useState<PageFieldBinding[]>([]);
   const [scenes, setScenes] = useState<JobSceneDefinition[]>([]);
-  const [preprocessors, setPreprocessors] = useState<PreprocessorDefinition[]>([]);
+  const [dataProcessors, setDataProcessors] = useState<DataProcessorDefinition[]>([]);
   const [interfaces, setInterfaces] = useState<InterfaceDefinition[]>([]);
-  const [listDatas, setListDatas] = useState<ListDataDefinition[]>([]);
+  const [contextVariables, setContextVariables] = useState<ContextVariableDefinition[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RuleDefinition | null>(null);
   const [reuseSourceRule, setReuseSourceRule] = useState<RuleDefinition | null>(null);
@@ -117,7 +95,6 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
   const [logicLoading, setLogicLoading] = useState(false);
   const [globalLogicType, setGlobalLogicType] = useState<RuleLogicType>("AND");
   const [conditionsDraft, setConditionsDraft] = useState<FlatConditionDraft[]>([buildDefaultCondition()]);
-  const [listLookupDrafts, setListLookupDrafts] = useState<RuleListLookupCondition[]>([]);
   const [selectedOperand, setSelectedOperand] = useState<SelectedOperand | null>(null);
   const [savingQuery, setSavingQuery] = useState(false);
   const [saveValidationReport, setSaveValidationReport] = useState<SaveValidationReport | null>(null);
@@ -132,26 +109,28 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
   async function loadData() {
     setLoading(true);
     try {
-      const [ruleData, resourceData, fieldData, sceneData, preprocessorData, interfaceData, listDataRows] = await Promise.all([
+      const [ruleData, resourceData, menuData, fieldData, sceneData, dataProcessorData, interfaceData, contextVariableData] = await Promise.all([
         configCenterService.listRules({ viewerOrgId: options.viewerOrgId }),
         configCenterService.listPageResources(),
+        configCenterService.listPageMenus(),
         configCenterService.listBusinessFields(),
         configCenterService.listJobScenes({ viewerOrgId: options.viewerOrgId }),
-        configCenterService.listPreprocessors(),
+        configCenterService.listDataProcessors(),
         configCenterService.listInterfaces(),
-        configCenterService.listListDatas()
+        configCenterService.listContextVariables()
       ]);
       const bindingData = (await Promise.all(
         resourceData.map((resource) => configCenterService.listPageFieldBindings(resource.id))
       )).flat();
       setRows(ruleData);
       setResources(resourceData);
+      setPageMenus(menuData);
       setBusinessFields(fieldData);
       setPageFieldBindings(bindingData);
       setScenes(sceneData);
-      setPreprocessors(preprocessorData);
+      setDataProcessors(dataProcessorData);
       setInterfaces(interfaceData);
-      setListDatas(listDataRows);
+      setContextVariables(contextVariableData);
     } finally {
       setLoading(false);
     }
@@ -196,6 +175,25 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       group: field.scope === "GLOBAL" ? "公共字段" : "页面特有字段"
     }));
   }, [activePageResourceId, activeRuleScope, businessFields, pageFieldBindings]);
+  const contextVariableOptions = useMemo<Array<{ label: string; value: string }>>(() => {
+    const activeRows = contextVariables.filter((item) => item.status !== "DISABLED" && item.key.trim());
+    if (activeRows.length === 0) {
+      return contextOptions.map((item) => ({ label: item, value: item }));
+    }
+    const seen = new Set<string>();
+    return activeRows
+      .filter((item) => {
+        if (seen.has(item.key)) {
+          return false;
+        }
+        seen.add(item.key);
+        return true;
+      })
+      .map((item) => ({
+        label: item.label?.trim() ? `${item.label} (${item.key})` : item.key,
+        value: item.key
+      }));
+  }, [contextVariables]);
   const promptVariableOptions = useMemo<PromptVariableOption[]>(() => {
     const result: PromptVariableOption[] = [];
     const seenKeys = new Set<string>();
@@ -227,17 +225,37 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       });
     }
 
-    for (const item of contextOptions) {
-      if (seenKeys.has(item)) {
-        continue;
+    const contextRows = contextVariables.filter((item) => item.status !== "DISABLED" && item.key.trim());
+    if (contextRows.length === 0) {
+      for (const item of contextOptions) {
+        if (seenKeys.has(item)) {
+          continue;
+        }
+        seenKeys.add(item);
+        result.push({
+          key: item,
+          label: item,
+          exampleValue: exampleValues[item] ?? `${item}-示例`,
+          sourceType: "CONTEXT"
+        });
       }
-      seenKeys.add(item);
-      result.push({
-        key: item,
-        label: item,
-        exampleValue: exampleValues[item] ?? `${item}-示例`,
-        sourceType: "CONTEXT"
-      });
+    } else {
+      const seenContextKey = new Set<string>();
+      for (const item of contextRows) {
+        const key = item.key.trim();
+        if (!key || seenContextKey.has(key) || seenKeys.has(key)) {
+          continue;
+        }
+        seenContextKey.add(key);
+        seenKeys.add(key);
+        const dynamicExample = evaluateContextVariableValue(item, exampleValues);
+        result.push({
+          key,
+          label: item.label?.trim() || key,
+          exampleValue: dynamicExample || exampleValues[key] || `${key}-示例`,
+          sourceType: "CONTEXT"
+        });
+      }
     }
 
     const collectInterfaceVariables = (
@@ -272,7 +290,7 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     }
 
     return result;
-  }, [interfaces, pageFieldOptions]);
+  }, [contextVariables, interfaces, pageFieldOptions]);
   function buildRuleSnapshot(values: Partial<RuleForm>) {
     return JSON.stringify({
       templateRuleId: values.templateRuleId ?? null,
@@ -325,16 +343,16 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     setGlobalLogicType(rootGroup?.logicType ?? "AND");
     const nextConditions = conditionData.sort((a, b) => a.id - b.id).map(toFlatCondition);
     const safeConditions = nextConditions.length > 0 ? nextConditions : [buildDefaultCondition()];
-    const nextListLookupConditions = cloneListLookupConditions(rule.listLookupConditions);
     setConditionsDraft(safeConditions);
-    setListLookupDrafts(nextListLookupConditions);
     setSelectedOperand({ conditionId: safeConditions[0].id, side: "left" });
   }
-  function openCreate() {
+  function openCreate(presetPageResourceId?: number) {
     const presetPageId =
-      typeof options.initialPageResourceId === "number" &&
-      resources.some((item) => item.id === options.initialPageResourceId)
-        ? options.initialPageResourceId
+      typeof presetPageResourceId === "number" && resources.some((item) => item.id === presetPageResourceId)
+        ? presetPageResourceId
+        : typeof options.initialPageResourceId === "number" &&
+            resources.some((item) => item.id === options.initialPageResourceId)
+          ? options.initialPageResourceId
         : resources[0]?.id;
     const presetTemplate =
       mode === "PAGE_RULE" &&
@@ -364,11 +382,25 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       status: "DRAFT",
       ownerOrgId: presetTemplate?.ownerOrgId ?? "branch-east"
     };
+    const defaultCondition = buildDefaultCondition();
     setEditing(null);
     setCurrentRule(null);
     setReuseSourceRule(presetTemplate);
     setPublishNotice(null);
     ruleForm.setFieldsValue(values);
+    setConditionsDraft([defaultCondition]);
+    setSelectedOperand({ conditionId: defaultCondition.id, side: "left" });
+    setLogicValidationIssues([]);
+    if (presetTemplate) {
+      setLogicLoading(true);
+      void loadLogic(presetTemplate)
+        .catch((error) => {
+          msgApi.error(error instanceof Error ? error.message : "模板条件加载失败");
+        })
+        .finally(() => {
+          setLogicLoading(false);
+        });
+    }
     setRuleSnapshot(buildRuleSnapshot(values));
     setSaveValidationReport(null);
     setOpen(true);
@@ -388,6 +420,9 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     setReuseSourceRule(template);
     if (!template) {
       ruleForm.setFieldValue("templateRuleId", undefined);
+      const defaultCondition = buildDefaultCondition();
+      setConditionsDraft([defaultCondition]);
+      setSelectedOperand({ conditionId: defaultCondition.id, side: "left" });
       return;
     }
     const currentValues = ruleForm.getFieldsValue();
@@ -408,6 +443,15 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       sceneId: template.sceneId,
       ownerOrgId: currentValues.ownerOrgId?.trim() ? currentValues.ownerOrgId : template.ownerOrgId
     });
+    setLogicValidationIssues([]);
+    setLogicLoading(true);
+    void loadLogic(template)
+      .catch((error) => {
+        msgApi.error(error instanceof Error ? error.message : "模板条件加载失败");
+      })
+      .finally(() => {
+        setLogicLoading(false);
+      });
   }
   function openEdit(row: RuleDefinition) {
     const promptContent = parsePromptContentConfig(row.promptContentConfigJson);
@@ -478,6 +522,12 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
   const activeSaveValidationReport = liveSaveValidationReport ?? saveValidationReport;
   async function submitRule() {
     const values = await ruleForm.validateFields();
+    const logicIssues = collectLogicValidationIssues();
+    setLogicValidationIssues(logicIssues);
+    if (logicIssues.some((issue) => issue.level === "blocking")) {
+      msgApi.error("条件配置存在未处理问题，请先修复后再保存规则");
+      return;
+    }
     const effectiveScope = mode === "TEMPLATE" ? "SHARED" : values.ruleScope;
     const resource =
       effectiveScope === "PAGE_RESOURCE"
@@ -523,27 +573,30 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       return;
     }
     const saved = result.data;
+    try {
+      await persistConditionLogic(saved.id);
+      await configCenterService.updateRuleStatus(saved.id, "ACTIVE");
+      setLogicValidationIssues([]);
+    } catch (error) {
+      msgApi.error(error instanceof Error ? `规则已保存，但条件保存失败：${error.message}` : "规则已保存，但条件保存失败");
+      setEditing(saved);
+      setCurrentRule(saved);
+      await loadData();
+      return;
+    }
     const savedObjectLabel = isTemplateMode(mode) ? "模板" : "规则";
     const savedMessage =
       result.report.warningCount > 0
-        ? `${savedObjectLabel}已保存草稿，另有 ${result.report.warningCount} 个待处理项`
+        ? `${savedObjectLabel}已保存并生效，另有 ${result.report.warningCount} 个提醒建议处理`
         : mode === "PAGE_RULE" && !editing && reuseSourceRule
-          ? "规则模板已复用为页面规则，并已进入待发布列表"
+          ? "规则模板已复用为页面规则，并已立即生效"
           : !editing
-            ? `${savedObjectLabel}已创建，并已进入待发布列表`
+            ? `${savedObjectLabel}已创建并立即生效`
             : saved.id !== editing.id
-              ? `${savedObjectLabel}已更新，已自动生成待发布版本`
-              : `${savedObjectLabel}已更新`;
-    if (mode === "PAGE_RULE" && !editing && reuseSourceRule) {
-      await workflowService.cloneRuleLogic(reuseSourceRule.id, saved.id);
-    }
+              ? `${savedObjectLabel}已更新并立即生效`
+              : `${savedObjectLabel}已更新并立即生效`;
     msgApi.success(savedMessage);
-    setPublishNotice({
-      objectLabel: savedObjectLabel,
-      objectName: saved.name,
-      warningCount: result.report.warningCount,
-      resourceId: saved.id
-    });
+    setPublishNotice(null);
     closeRuleModalDirectly();
     await loadData();
   }
@@ -557,17 +610,25 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       effectiveEndAt?: string;
     }
   ): Promise<boolean> {
-    const pendingRows = await configCenterService.listPendingItems();
-    const pending = pendingRows.find((item) => item.resourceType === "RULE" && item.resourceId === ruleId);
-    if (!pending) {
-      msgApi.warning("当前对象没有可生效版本，请先保存草稿。");
-      return false;
-    }
     const normalizedEffectiveOrgIds = options?.effectiveOrgIds ?? [];
-    const result = await configCenterService.publishPendingItem(pending.id, "person-business-manager", options);
-    if (!result.success) {
-      msgApi.error("生效未通过，请先处理阻断项后再试。");
-      return false;
+    const existingRule = rows.find((item) => item.id === ruleId);
+    if (
+      existingRule &&
+      options?.effectiveStartAt &&
+      options?.effectiveEndAt &&
+      (
+        existingRule.effectiveStartAt !== options.effectiveStartAt ||
+        existingRule.effectiveEndAt !== options.effectiveEndAt
+      )
+    ) {
+      await configCenterService.upsertRule({
+        ...existingRule,
+        effectiveStartAt: options.effectiveStartAt,
+        effectiveEndAt: options.effectiveEndAt,
+        status: "ACTIVE"
+      });
+    } else {
+      await configCenterService.updateRuleStatus(ruleId, "ACTIVE");
     }
     const effectiveTimeSummary =
       options?.effectiveStartAt && options?.effectiveEndAt
@@ -598,12 +659,7 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       effectiveEndAt?: string;
     }
   ): Promise<boolean> {
-    const draftResult = await configCenterService.saveRuleDraft(toRuleDraftPayload(row));
-    if (!draftResult.success || !draftResult.data) {
-      msgApi.error(draftResult.report.summary);
-      return false;
-    }
-    return publishRuleNow(draftResult.data.id, draftResult.data.name, options);
+    return publishRuleNow(row.id, row.name, options);
   }
 
   async function switchStatus(row: RuleDefinition) {
@@ -617,7 +673,7 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     const targetOrgId = options.viewerOrgId ?? "branch-east";
     const operatorId = options.viewerOperatorId ?? "person-zhao-yi";
     await configCenterService.cloneRuleToOrg(row.id, targetOrgId, operatorId);
-    msgApi.success("已复制为我的版本");
+    msgApi.success("已复制为我的副本");
     await loadData();
   }
   async function openLogic(row: RuleDefinition) {
@@ -665,25 +721,6 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
       return next;
     });
   }
-  function addListLookupCondition() {
-    setListLookupDrafts((previous) => [...previous, buildDefaultListLookupCondition(listDatas)]);
-  }
-  function updateListLookupCondition(
-    conditionId: string,
-    patch: Partial<RuleListLookupCondition> | ((previous: RuleListLookupCondition) => RuleListLookupCondition)
-  ) {
-    setListLookupDrafts((previous) =>
-      previous.map((item) => {
-        if (item.id !== conditionId) {
-          return item;
-        }
-        return typeof patch === "function" ? patch(item) : { ...item, ...patch };
-      })
-    );
-  }
-  function removeListLookupCondition(conditionId: string) {
-    setListLookupDrafts((previous) => previous.filter((item) => item.id !== conditionId));
-  }
   const selectedContext = useMemo(() => {
     if (!selectedOperand) {
       return null;
@@ -713,32 +750,53 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     }
     Modal.confirm({
       title: "切换来源将清理旧配置",
-      content: "来源切换后将清空当前值、接口入参与预处理器配置，是否继续？",
+      content: "来源切换后将清空当前值、接口入参与数据处理配置，是否继续？",
       okText: "继续切换",
       cancelText: "取消",
       onOk: applyChange
     });
   }
-  function addPreprocessorBinding() {
-    if (!selectedContext) {
-      return;
+  function normalizeDataProcessorArgs(dataProcessorId: number | undefined, currentArgs: string[] = []) {
+    if (typeof dataProcessorId !== "number") {
+      return [];
     }
-    const next = [...selectedContext.operand.preprocessors, { id: buildPreprocessorId(), params: "" }];
-    updateSelectedOperand({ preprocessors: next });
+    const target = dataProcessors.find((item) => item.id === dataProcessorId);
+    const argCount = Math.max(0, (target?.paramCount ?? 1) - 1);
+    return Array.from({ length: argCount }, (_, index) => currentArgs[index] ?? "");
   }
-  function updatePreprocessorBinding(bindingId: string, patch: Partial<PreprocessorDraft>) {
+  function addDataProcessorBinding() {
     if (!selectedContext) {
       return;
     }
-    const next = selectedContext.operand.preprocessors.map((item) => (item.id === bindingId ? { ...item, ...patch } : item));
-    updateSelectedOperand({ preprocessors: next });
+    const next = [...selectedContext.operand.dataProcessors, { id: buildDataProcessorId(), args: [] }];
+    updateSelectedOperand({ dataProcessors: next });
   }
-  function removePreprocessorBinding(bindingId: string) {
+  function updateDataProcessorBinding(bindingId: string, patch: Partial<DataProcessorDraft>) {
     if (!selectedContext) {
       return;
     }
-    const next = selectedContext.operand.preprocessors.filter((item) => item.id !== bindingId);
-    updateSelectedOperand({ preprocessors: next });
+    const next = selectedContext.operand.dataProcessors.map((item) => {
+      if (item.id !== bindingId) {
+        return item;
+      }
+      const merged: DataProcessorDraft = {
+        ...item,
+        ...patch,
+        args: patch.args ?? item.args
+      };
+      if (Object.prototype.hasOwnProperty.call(patch, "dataProcessorId")) {
+        merged.args = normalizeDataProcessorArgs(merged.dataProcessorId, merged.args);
+      }
+      return merged;
+    });
+    updateSelectedOperand({ dataProcessors: next });
+  }
+  function removeDataProcessorBinding(bindingId: string) {
+    if (!selectedContext) {
+      return;
+    }
+    const next = selectedContext.operand.dataProcessors.filter((item) => item.id !== bindingId);
+    updateSelectedOperand({ dataProcessors: next });
   }
   function validateOperand(draft: OperandDraft, label: string, conditionIndex: number): FieldValidationIssue[] {
     const issues: FieldValidationIssue[] = [];
@@ -780,84 +838,6 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
           );
         }
       }
-    } else if (draft.sourceType === "LIST_LOOKUP_FIELD") {
-      if (!draft.listDataId) {
-        issues.push(
-          createFieldIssue({
-            section: "logic",
-            field: `${conditionIndex}:${label}:listDataId`,
-            label: fieldLabel,
-            message: "请选择名单数据"
-          })
-        );
-      }
-      if (!listDatas.some((item) => item.id === draft.listDataId)) {
-        issues.push(
-          createFieldIssue({
-            section: "logic",
-            field: `${conditionIndex}:${label}:listDataId`,
-            label: fieldLabel,
-            message: "所选名单不存在"
-          })
-        );
-      }
-      const validMatchers = draft.listMatchers.filter((item) => item.matchColumn.trim() && item.sourceValue.trim());
-      if (validMatchers.length === 0) {
-        issues.push(
-          createFieldIssue({
-            section: "logic",
-            field: `${conditionIndex}:${label}:listMatchers`,
-            label: fieldLabel,
-            message: "请至少配置一个检索键"
-          })
-        );
-      }
-      for (const [matcherIndex, matcher] of draft.listMatchers.entries()) {
-        if (!matcher.matchColumn.trim() && !matcher.sourceValue.trim()) {
-          continue;
-        }
-        if (!matcher.matchColumn.trim()) {
-          issues.push(
-            createFieldIssue({
-              section: "logic",
-              field: `${conditionIndex}:${label}:matcher:${matcherIndex}:matchColumn`,
-              label: fieldLabel,
-              message: `检索键 ${matcherIndex + 1} 缺少匹配列`
-            })
-          );
-        }
-        if (!matcher.sourceValue.trim()) {
-          issues.push(
-            createFieldIssue({
-              section: "logic",
-              field: `${conditionIndex}:${label}:matcher:${matcherIndex}:sourceValue`,
-              label: fieldLabel,
-              message: `检索键 ${matcherIndex + 1} 缺少取值来源`
-            })
-          );
-        }
-      }
-      if (!draft.resultField?.trim()) {
-        issues.push(
-          createFieldIssue({
-            section: "logic",
-            field: `${conditionIndex}:${label}:resultField`,
-            label: fieldLabel,
-            message: "请选择输出字段"
-          })
-        );
-      }
-      const pickedList = listDatas.find((item) => item.id === draft.listDataId);
-      if (pickedList && draft.resultField?.trim() && !pickedList.outputFields.includes(draft.resultField.trim())) {
-        issues.push(
-          createFieldIssue({
-            section: "logic",
-            field: `${conditionIndex}:${label}:resultField`,
-            label: fieldLabel,
-            message: "输出字段必须从名单输出字段中选择"
-          })
-        );
-      }
     } else if (!draft.displayValue.trim()) {
       issues.push(
         createFieldIssue({
@@ -868,23 +848,20 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
         })
       );
     }
-    const invalidPreprocessor = draft.preprocessors.find((item) => typeof item.preprocessorId !== "number");
-    if (invalidPreprocessor) {
+    const invalidDataProcessor = draft.dataProcessors.find((item) => typeof item.dataProcessorId !== "number");
+    if (invalidDataProcessor) {
       issues.push(
         createFieldIssue({
           section: "logic",
-          field: `${conditionIndex}:${label}:preprocessor`,
+          field: `${conditionIndex}:${label}:dataProcessor`,
           label: fieldLabel,
-          message: "存在未完成选择的数据转换规则"
+          message: "存在未完成选择的数据处理函数"
         })
       );
     }
     return issues;
   }
-  async function saveConditionLogic() {
-    if (!currentRule) {
-      return;
-    }
+  function collectLogicValidationIssues() {
     const nextIssues: FieldValidationIssue[] = [];
     for (const [index, condition] of conditionsDraft.entries()) {
       nextIssues.push(...validateOperand(condition.left, "left", index));
@@ -892,6 +869,41 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
         nextIssues.push(...validateOperand(condition.right, "right", index));
       }
     }
+    return nextIssues;
+  }
+  async function persistConditionLogic(ruleId: number) {
+    const latestGroups = await workflowService.listRuleConditionGroups(ruleId);
+    const roots = latestGroups.filter((item) => !item.parentGroupId);
+    for (const root of roots) {
+      await workflowService.deleteRuleConditionGroup(root.id);
+    }
+    const rootGroup: RuleConditionGroup = await workflowService.createRuleConditionGroup(ruleId, globalLogicType);
+    const nextLocalId = (() => {
+      let cursor = Date.now();
+      return () => {
+        cursor += 1;
+        return cursor;
+      };
+    })();
+    for (const condition of conditionsDraft) {
+      const operator = normalizeOperator(condition.operator);
+      const needRight = operator !== "EXISTS";
+      await workflowService.upsertRuleCondition({
+        id: nextLocalId(),
+        ruleId,
+        groupId: rootGroup.id,
+        left: toRuleOperand(condition.left),
+        operator,
+        right: needRight ? toRuleOperand(condition.right) : undefined
+      });
+    }
+  }
+  async function saveConditionLogic() {
+    if (!currentRule) {
+      msgApi.warning("请先保存规则基础信息，再单独保存条件逻辑");
+      return;
+    }
+    const nextIssues = collectLogicValidationIssues();
     setLogicValidationIssues(nextIssues);
     if (nextIssues.some((issue) => issue.level === "blocking")) {
       msgApi.error("高级条件存在未处理问题，请先修复后再保存");
@@ -899,32 +911,7 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     }
     setSavingQuery(true);
     try {
-      const currentRuleId = currentRule.id;
-      const latestGroups = await workflowService.listRuleConditionGroups(currentRuleId);
-      const roots = latestGroups.filter((item) => !item.parentGroupId);
-      for (const root of roots) {
-        await workflowService.deleteRuleConditionGroup(root.id);
-      }
-      const rootGroup: RuleConditionGroup = await workflowService.createRuleConditionGroup(currentRuleId, globalLogicType);
-      const nextLocalId = (() => {
-        let cursor = Date.now();
-        return () => {
-          cursor += 1;
-          return cursor;
-        };
-      })();
-      for (const condition of conditionsDraft) {
-        const operator = normalizeOperator(condition.operator);
-        const needRight = operator !== "EXISTS";
-        await workflowService.upsertRuleCondition({
-          id: nextLocalId(),
-          ruleId: currentRuleId,
-          groupId: rootGroup.id,
-          left: toRuleOperand(condition.left),
-          operator,
-          right: needRight ? toRuleOperand(condition.right) : undefined
-        });
-      }
+      await persistConditionLogic(currentRule.id);
       msgApi.success("条件逻辑已保存");
       setLogicValidationIssues([]);
       await loadLogic(currentRule);
@@ -1000,18 +987,19 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     };
   }, [activeSaveValidationReport, logicValidationIssues]);
   return {
-    mode, holder, logicDrawerWidth, loading,
+    mode, holder, msgApi, logicDrawerWidth, loading,
     rows: mode === "TEMPLATE" ? templateRows : pageRuleRows,
     templates: templateRows,
-    resources, scenes, preprocessors, interfaces, listDatas,
+    resources, pageMenus, scenes, dataProcessors, interfaces,
     open, editing, ruleForm, currentRule, logicLoading, globalLogicType, setGlobalLogicType,
     pageFieldOptions,
+    contextVariableOptions,
     promptVariableOptions,
-    conditionsDraft, listLookupDrafts, selectedOperand, setSelectedOperand, savingQuery,
+    conditionsDraft, selectedOperand, setSelectedOperand, savingQuery,
     closeRuleModal, openCreate, applyTemplate, openEdit, submitRule, switchStatus, openLogic,
-    addCondition, removeCondition, addListLookupCondition, updateListLookupCondition, removeListLookupCondition,
+    addCondition, removeCondition,
     selectedContext, changeSelectedSourceType,
-    addPreprocessorBinding, updatePreprocessorBinding, removePreprocessorBinding,
+    addDataProcessorBinding, updateDataProcessorBinding, removeDataProcessorBinding,
     saveConditionLogic, selectedOutputPathOptions, selectedInterfaceInputParams,
     selectedInterfaceInputConfig, updateInterfaceInputValue,
     updateCondition, updateSelectedOperand, statusColor, operatorOptions, sourceOptions, valueTypeOptions,
@@ -1025,10 +1013,12 @@ export function useRulesPageModel(mode: RulesPageMode = "PAGE_RULE", options: Ru
     publishNoticeNow,
     publishRuleNow,
     restoreRuleNow,
-    cloneRuleToViewerOrg
+    cloneRuleToViewerOrg,
+    reloadData: loadData
   };
 }
 
 function isTemplateMode(mode: RulesPageMode) {
   return mode === "TEMPLATE";
 }
+

@@ -33,6 +33,8 @@ describe("job scene graph style", () => {
     expect(flow.nodes[0]?.sourcePosition).toBe(Position.Right);
     expect(flow.nodes[1]?.targetPosition).toBe(Position.Left);
     expect(flow.edges).toHaveLength(0);
+    expect(flow.nodes[0]?.data.typeLabel).toBe("页面取值");
+    expect(flow.nodes[0]?.data.label).toBe("1. 页面取值1");
   });
 
   it("restores edges from saved next-node ids", () => {
@@ -67,5 +69,25 @@ describe("job scene graph style", () => {
       target: "12",
       type: "bezier"
     });
+  });
+
+  it("includes node type in label even if node name is customized", () => {
+    const rows: JobNodeDefinition[] = [
+      {
+        id: 21,
+        sceneId: 10,
+        nodeType: "api_call",
+        name: "查询客户资料",
+        orderNo: 1,
+        enabled: true,
+        configJson: "{}",
+        updatedAt: "2026-03-19T00:00:00.000Z"
+      }
+    ];
+
+    const flow = buildFlowFromNodeRows(rows);
+
+    expect(flow.nodes[0]?.data.typeLabel).toBe("接口调用");
+    expect(flow.nodes[0]?.data.label).toBe("1. 查询客户资料");
   });
 });

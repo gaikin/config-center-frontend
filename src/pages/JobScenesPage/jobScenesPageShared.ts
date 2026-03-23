@@ -19,6 +19,7 @@ export type StatusFilter = "ALL" | LifecycleState;
 
 export type FlowNodeData = {
   label: string;
+  typeLabel: string;
   nodeType: JobNodeDefinition["nodeType"];
   enabled: boolean;
   onDelete?: () => void;
@@ -69,12 +70,6 @@ export type NodeDetailForm = {
   apiInputBindings?: Record<string, ApiCallInputBinding>;
   apiOutputPaths?: string[];
   apiRefactorRequired?: boolean;
-  listDataId?: number;
-  matchColumn?: string;
-  inputSourceType?: "STRING" | "REFERENCE";
-  inputSource?: string;
-  resultKey?: string;
-  resultKeys?: string[];
   scriptCode?: string;
   scriptInputs?: ScriptInputRow[];
   scriptOutputKeys?: string[];
@@ -130,6 +125,20 @@ export function buildExecutionMode(triggerMode: TriggerMode, previewBeforeExecut
   return previewBeforeExecute ? "PREVIEW_THEN_EXECUTE" : "AUTO_AFTER_PROMPT";
 }
 
+export function resolvePersistedExecutionMode(
+  executionMode: JobSceneDefinition["executionMode"],
+  previewBeforeExecute: boolean
+): JobSceneDefinition["executionMode"] {
+  if (executionMode === "AUTO_WITHOUT_PROMPT" && !previewBeforeExecute) {
+    return "AUTO_WITHOUT_PROMPT";
+  }
+  return buildExecutionMode(deriveTriggerMode(executionMode), previewBeforeExecute);
+}
+
+export function isApiOutputSelectionRequired(outputOptionCount: number) {
+  return outputOptionCount > 0;
+}
+
 export function getTriggerModeLabel(triggerMode: TriggerMode) {
   return triggerMode === "BUTTON" ? "按钮触发" : "自动执行";
 }
@@ -141,7 +150,7 @@ export function getRunModeLabel(previewBeforeExecute: boolean) {
 export const nodeTypeLabel: Record<JobNodeDefinition["nodeType"], string> = {
   page_get: "页面取值",
   api_call: "接口调用",
-  list_lookup: "名单检索",
+  list_lookup: "名单检索(已下线)",
   js_script: "脚本处理",
   page_set: "页面写值",
   page_click: "页面点击",
@@ -151,12 +160,22 @@ export const nodeTypeLabel: Record<JobNodeDefinition["nodeType"], string> = {
 export const nodeLibrary: NodeLibraryItem[] = [
   { label: "页面取值", nodeType: "page_get", description: "从页面字段读取值" },
   { label: "接口调用", nodeType: "api_call", description: "调用外部接口获取数据" },
-  { label: "名单检索", nodeType: "list_lookup", description: "到名单中心检索匹配结果" },
   { label: "脚本处理", nodeType: "js_script", description: "执行脚本进行加工" },
   { label: "页面写值", nodeType: "page_set", description: "将结果写回页面字段" },
   { label: "页面点击", nodeType: "page_click", description: "点击页面字段对应控件" },
   { label: "发送热键", nodeType: "send_hotkey", description: "向页面发送组合热键" }
 ];
+
+export function formatFlowNodeLabel(
+  orderNo: number,
+  name: string
+) {
+  return `${orderNo}. ${name}`;
+}
+
+export function formatFlowNodeTypeLabel(nodeType: JobNodeDefinition["nodeType"]) {
+  return nodeTypeLabel[nodeType];
+}
 
 export const HOTKEY_MODIFIER_OPTIONS: Array<{ label: string; value: HotkeyModifier }> = [
   { label: "Ctrl", value: "CTRL" },
@@ -529,7 +548,8 @@ export function buildFlowFromNodeRows(nodeRows: JobNodeDefinition[]) {
     id: String(item.id),
     type: "jobNode",
     data: {
-      label: `${item.orderNo}. ${item.name}`,
+      label: formatFlowNodeLabel(item.orderNo, item.name),
+      typeLabel: formatFlowNodeTypeLabel(item.nodeType),
       nodeType: item.nodeType,
       enabled: item.enabled
     },
@@ -622,11 +642,7 @@ export function deriveOrderedNodeIds(nodes: FlowNode[], edges: FlowEdge[]): stri
 export function getDefaultNodeConfig(
   nodeType: JobNodeDefinition["nodeType"],
   options: {
-    listDataId?: number;
-    matchColumn?: string;
-    inputSource?: string;
     field?: string;
-    resultKeys?: string[];
     target?: string;
   } = {}
 ): NodeConfig {
@@ -638,18 +654,6 @@ export function getDefaultNodeConfig(
       schemaVersion: 2,
       inputBindings: {},
       outputPaths: []
-    };
-  }
-  if (nodeType === "list_lookup") {
-    const resultKeys = (options.resultKeys ?? []).map((item) => item.trim()).filter(Boolean);
-    const defaultResultKeys = resultKeys.length > 0 ? resultKeys : ["list_lookup_result"];
-    return {
-      listDataId: options.listDataId,
-      matchColumn: options.matchColumn ?? "",
-      inputSourceType: "STRING",
-      inputSource: options.inputSource ?? "",
-      resultKeys: defaultResultKeys,
-      resultKey: defaultResultKeys[0]
     };
   }
   if (nodeType === "js_script") {
@@ -702,23 +706,6 @@ export function buildNodeConfigFromForm(values: NodeDetailForm): NodeConfig {
       interfaceId: values.apiInterfaceId,
       inputBindings: normalizedBindings,
       outputPaths: [...outputPathSet]
-    };
-  }
-  if (values.nodeType === "list_lookup") {
-    const resultKeys = Array.from(
-      new Set(
-        (values.resultKeys ?? (values.resultKey ? [values.resultKey] : []))
-          .map((item) => item.trim())
-          .filter(Boolean)
-      )
-    );
-    return {
-      listDataId: values.listDataId,
-      matchColumn: values.matchColumn?.trim() ?? "",
-      inputSourceType: values.inputSourceType ?? "STRING",
-      inputSource: values.inputSource?.trim() ?? "",
-      resultKeys,
-      resultKey: resultKeys[0] ?? ""
     };
   }
   if (values.nodeType === "js_script") {
@@ -784,13 +771,6 @@ export function buildNodeConfigFromForm(values: NodeDetailForm): NodeConfig {
 
 export function buildFormValuesFromNode(node: JobNodeDefinition): NodeDetailForm {
   const config = parseConfig(node.configJson);
-  const rawInputSource = typeof config.inputSource === "string" ? config.inputSource : "";
-  const inputSourceType: NodeDetailForm["inputSourceType"] =
-    config.inputSourceType === "STRING" || config.inputSourceType === "REFERENCE"
-      ? config.inputSourceType
-      : rawInputSource.trim().startsWith("{{") && rawInputSource.trim().endsWith("}}")
-        ? "REFERENCE"
-        : "STRING";
   const rawValue = typeof config.value === "string" ? config.value : "";
   const valueType: NodeDetailForm["valueType"] =
     config.valueType === "STRING" || config.valueType === "REFERENCE"
@@ -928,22 +908,6 @@ export function buildFormValuesFromNode(node: JobNodeDefinition): NodeDetailForm
     apiInputBindings,
     apiOutputPaths,
     apiRefactorRequired,
-    listDataId: typeof config.listDataId === "number" ? config.listDataId : undefined,
-    matchColumn: typeof config.matchColumn === "string" ? config.matchColumn : "",
-    inputSourceType,
-    inputSource: rawInputSource,
-    resultKeys: Array.isArray(config.resultKeys)
-      ? Array.from(
-          new Set(
-            (config.resultKeys as unknown[])
-              .map((item) => (typeof item === "string" ? item.trim() : ""))
-              .filter(Boolean)
-          )
-        )
-      : typeof config.resultKey === "string" && config.resultKey.trim()
-        ? [config.resultKey]
-        : [],
-    resultKey: typeof config.resultKey === "string" ? config.resultKey : "",
     scriptCode,
     scriptInputs,
     scriptOutputKeys,
@@ -985,21 +949,6 @@ function deriveNodeOutputKeys(node: JobNodeDefinition): string[] {
       keys.add(`node_${node.id}_${machineKey}`);
     }
     return [...keys];
-  }
-  if (node.nodeType === "list_lookup") {
-    const resultKeys = Array.isArray(config.resultKeys)
-      ? (config.resultKeys as unknown[])
-          .map((item) => (typeof item === "string" ? normalizeVariableSegment(item) : ""))
-          .filter(Boolean)
-      : [];
-    if (resultKeys.length > 0) {
-      return Array.from(new Set(resultKeys.map((item) => `node_${node.id}_${item}`)));
-    }
-    const resultKey =
-      typeof config.resultKey === "string" && config.resultKey.trim()
-        ? normalizeVariableSegment(config.resultKey)
-        : "list_lookup_result";
-    return [`node_${node.id}_${resultKey || "list_lookup_result"}`];
   }
   if (node.nodeType === "js_script") {
     if (config.schemaVersion === 2 && Array.isArray(config.outputKeys)) {

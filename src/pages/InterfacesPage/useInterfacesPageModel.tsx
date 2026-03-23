@@ -9,6 +9,7 @@ import type {
   ApiOutputParam,
   ApiValueType,
   FieldValidationIssue,
+  InterfaceDraftPayload,
   InterfaceDefinition,
   LifecycleState,
   SaveValidationReport
@@ -16,7 +17,6 @@ import type {
 import {
   buildInputSummary,
   buildMockResponseBody,
-  DebugEnv,
   DebugResult,
   defaultInputValidationConfig,
   defaultInputParam,
@@ -38,16 +38,39 @@ import {
   ApiRegisterForm
 } from "./interfacesPageShared";
 
-function toInterfaceDraftPayload(
-  row: InterfaceDefinition
-): Omit<InterfaceDefinition, "updatedAt"> & { updatedAt?: string } {
+type UseInterfacesPageModelOptions = {
+  onSaveValidationError?: (fieldName: string) => void;
+};
+
+const submitValidateFieldNames: Array<keyof ApiRegisterForm> = ["name", "description", "method", "prodPath"];
+
+function getFirstValidationFieldName(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const errorFields = (error as { errorFields?: Array<{ name?: Array<string | number> }> }).errorFields;
+  if (!Array.isArray(errorFields) || errorFields.length === 0) {
+    return null;
+  }
+  const first = errorFields[0];
+  const name = first?.name;
+  if (!Array.isArray(name) || name.length === 0) {
+    return null;
+  }
+  return String(name[0]);
+}
+
+export function mergeSubmitFormValues(
+  validatedValues: Partial<ApiRegisterForm> | undefined,
+  allValues: Partial<ApiRegisterForm> | undefined
+): Partial<ApiRegisterForm> {
   return {
-    ...row,
-    status: "DRAFT"
+    ...(allValues ?? {}),
+    ...(validatedValues ?? {})
   };
 }
 
-export function useInterfacesPageModel() {
+export function useInterfacesPageModel(options: UseInterfacesPageModelOptions = {}) {
   const screens = Grid.useBreakpoint();
   const drawerWidth = getRightOverlayDrawerWidth(Boolean(screens.lg));
 
@@ -63,7 +86,6 @@ export function useInterfacesPageModel() {
 
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugTarget, setDebugTarget] = useState<InterfaceDefinition | null>(null);
-  const [debugEnv, setDebugEnv] = useState<DebugEnv>("TEST");
   const [debugPayload, setDebugPayload] = useState("{}");
   const [debugResult, setDebugResult] = useState<DebugResult | null>(null);
 
@@ -71,6 +93,7 @@ export function useInterfacesPageModel() {
   const [inputValidationIssues, setInputValidationIssues] = useState<FieldValidationIssue[]>([]);
   const [outputValidationIssues, setOutputValidationIssues] = useState<FieldValidationIssue[]>([]);
   const [publishNotice, setPublishNotice] = useState<{ objectName: string; warningCount: number; resourceId: number } | null>(null);
+  const [draftOwnerOrgId, setDraftOwnerOrgId] = useState("branch-east");
 
   const [form] = Form.useForm<ApiRegisterForm>();
   const [msgApi, holder] = message.useMessage();
@@ -112,23 +135,17 @@ export function useInterfacesPageModel() {
     name?: string;
     description?: string;
     method?: ApiRegisterForm["method"];
-    testPath?: string;
     prodPath?: string;
   }) {
     setEditing(null);
     setPublishNotice(null);
     resetFormState();
+    setDraftOwnerOrgId(preset?.ownerOrgId ?? "branch-east");
     form.setFieldsValue({
       name: preset?.name ?? "",
       description: preset?.description ?? "",
       method: preset?.method ?? "POST",
-      testPath: preset?.testPath ?? "",
       prodPath: preset?.prodPath ?? "",
-      status: "DRAFT",
-      ownerOrgId: preset?.ownerOrgId ?? "branch-east",
-      timeoutMs: 3000,
-      retryTimes: 1,
-      maskSensitive: true,
       bodyTemplateJson: ""
     });
     setDrawerOpen(true);
@@ -137,6 +154,7 @@ export function useInterfacesPageModel() {
   function openEdit(row: InterfaceDefinition) {
     setEditing(row);
     setPublishNotice(null);
+    setDraftOwnerOrgId(row.ownerOrgId);
     setInputConfig(normalizeInputConfig(row.inputConfigJson));
     setOutputConfig(normalizeOutputConfig(row.outputConfigJson));
     setOutputSampleJson("{\n  \"data\": {}\n}");
@@ -145,13 +163,7 @@ export function useInterfacesPageModel() {
       name: row.name,
       description: row.description,
       method: row.method,
-      testPath: row.testPath,
       prodPath: row.prodPath,
-      status: row.status,
-      ownerOrgId: row.ownerOrgId,
-      timeoutMs: row.timeoutMs,
-      retryTimes: row.retryTimes,
-      maskSensitive: row.maskSensitive,
       bodyTemplateJson: row.bodyTemplateJson
     });
     setDrawerOpen(true);
@@ -160,6 +172,7 @@ export function useInterfacesPageModel() {
   function openClone(row: InterfaceDefinition) {
     setEditing(null);
     setPublishNotice(null);
+    setDraftOwnerOrgId(row.ownerOrgId);
     setInputConfig(normalizeInputConfig(row.inputConfigJson));
     setOutputConfig(normalizeOutputConfig(row.outputConfigJson));
     setOutputSampleJson("{\n  \"data\": {}\n}");
@@ -167,13 +180,7 @@ export function useInterfacesPageModel() {
       name: `${row.name}-副本`,
       description: row.description,
       method: row.method,
-      testPath: row.testPath,
       prodPath: row.prodPath,
-      status: "DRAFT",
-      ownerOrgId: row.ownerOrgId,
-      timeoutMs: row.timeoutMs,
-      retryTimes: row.retryTimes,
-      maskSensitive: row.maskSensitive,
       bodyTemplateJson: row.bodyTemplateJson
     });
     setDrawerOpen(true);
@@ -195,19 +202,19 @@ export function useInterfacesPageModel() {
         name: values.name?.trim() ?? "",
         description: values.description?.trim() ?? "",
         method: values.method ?? "POST",
-        testPath: values.testPath?.trim() ?? "",
         prodPath: values.prodPath?.trim() ?? "",
-        ownerOrgId: values.ownerOrgId ?? "",
-        timeoutMs: values.timeoutMs ?? 0,
-        retryTimes: values.retryTimes ?? 0,
+        currentVersion: editing?.currentVersion ?? 1,
         bodyTemplateJson: values.bodyTemplateJson?.trim() ?? "",
-        maskSensitive: values.maskSensitive ?? true
+        inputConfigJson: JSON.stringify(inputConfig),
+        outputConfigJson: JSON.stringify(outputConfig),
+        paramSourceSummary: buildInputSummary(inputConfig),
+        responsePath: getResponsePath(outputConfig)
       },
       inputConfig,
       outputConfig,
       rows
     );
-  }, [drawerOpen, editing?.id, inputConfig, outputConfig, rows, watchedFormValues]);
+  }, [drawerOpen, editing?.id, editing?.currentVersion, inputConfig, outputConfig, rows, watchedFormValues]);
 
   const liveOutputSampleIssues = useMemo(() => {
     const raw = outputSampleJson.trim();
@@ -411,11 +418,7 @@ export function useInterfacesPageModel() {
 
     try {
       const parsed = JSON.parse(raw) as unknown;
-      const base =
-        parsed && typeof parsed === "object" && !Array.isArray(parsed) && "data" in (parsed as Record<string, unknown>)
-          ? (parsed as Record<string, unknown>).data
-          : parsed;
-      const generated = parseOutputFromSampleObject(base, "$.data");
+      const generated = parseOutputFromSampleObject(parsed, "$");
       setOutputConfig((prev) => {
         const manualPathMap = collectManualOutputPathMap(prev);
         return applyManualOutputPaths(generated, manualPathMap);
@@ -436,65 +439,57 @@ export function useInterfacesPageModel() {
     }
   }
   async function submit() {
-    const values = await form.validateFields();
+    let validatedValues: Partial<ApiRegisterForm>;
+    try {
+      validatedValues = (await form.validateFields(submitValidateFieldNames)) as Partial<ApiRegisterForm>;
+    } catch (error) {
+      const fieldName = getFirstValidationFieldName(error);
+      if (fieldName) {
+        options.onSaveValidationError?.(fieldName);
+      }
+      msgApi.error("请先处理表单中的阻断项");
+      return;
+    }
+    const values = mergeSubmitFormValues(validatedValues, form.getFieldsValue(true) as Partial<ApiRegisterForm>);
 
-    const payload: Omit<InterfaceDefinition, "updatedAt"> = {
+    const payload: InterfaceDraftPayload = {
       id: editing?.id ?? Date.now() + Math.floor(Math.random() * 1000),
-      name: values.name.trim(),
-      description: values.description.trim(),
-      method: values.method,
-      testPath: values.testPath.trim(),
-      prodPath: values.prodPath.trim(),
-      url: values.prodPath.trim() || values.testPath.trim(),
-      status: values.status,
-      ownerOrgId: values.ownerOrgId,
+      name: values.name?.trim() ?? "",
+      description: values.description?.trim() ?? "",
+      method: values.method ?? "POST",
+      prodPath: values.prodPath?.trim() ?? "",
       currentVersion: editing?.currentVersion ?? 1,
-      timeoutMs: values.timeoutMs,
-      retryTimes: values.retryTimes,
       bodyTemplateJson: values.bodyTemplateJson?.trim() ?? "",
       inputConfigJson: JSON.stringify(inputConfig),
       outputConfigJson: JSON.stringify(outputConfig),
       paramSourceSummary: buildInputSummary(inputConfig),
-      responsePath: getResponsePath(outputConfig),
-      maskSensitive: values.maskSensitive
+      responsePath: getResponsePath(outputConfig)
     };
 
     setInputValidationIssues([]);
     setOutputValidationIssues([]);
-    const result = await configCenterService.saveInterfaceDraft(payload, { inputConfig, outputConfig });
+    const result = await configCenterService.saveInterfaceDraft(payload, { inputConfig, outputConfig, ownerOrgId: draftOwnerOrgId });
     setSaveValidationReport(result.report);
     if (!result.success) {
       msgApi.error(result.report.summary);
       return;
     }
+    const savedInterfaceId = result.data?.id ?? payload.id;
+    await configCenterService.updateInterfaceStatus(savedInterfaceId, "ACTIVE");
     msgApi.success(
       result.report.warningCount > 0
-        ? `API注册已保存草稿，另有 ${result.report.warningCount} 个待处理项`
+        ? `API注册已保存并生效，另有 ${result.report.warningCount} 个提醒建议处理`
         : editing
-          ? "API注册已更新，并已进入待发布列表"
-          : "API注册已创建，并已进入待发布列表"
+          ? "API注册已更新并立即生效"
+          : "API注册已创建并立即生效"
     );
-    setPublishNotice({
-      objectName: payload.name,
-      warningCount: result.report.warningCount,
-      resourceId: result.data?.id ?? payload.id
-    });
+    setPublishNotice(null);
     closeDrawer();
     await loadData();
   }
 
   async function publishInterfaceNow(interfaceId: number, interfaceName: string, effectiveOrgIds: string[] = []): Promise<boolean> {
-    const pendingRows = await configCenterService.listPendingItems();
-    const pending = pendingRows.find((item) => item.resourceType === "INTERFACE" && item.resourceId === interfaceId);
-    if (!pending) {
-      msgApi.warning("当前 API 没有可生效版本，请先保存草稿。");
-      return false;
-    }
-    const result = await configCenterService.publishPendingItem(pending.id, "person-business-manager", effectiveOrgIds);
-    if (!result.success) {
-      msgApi.error("生效未通过，请先处理阻断项后再试。");
-      return false;
-    }
+    await configCenterService.updateInterfaceStatus(interfaceId, "ACTIVE");
     msgApi.success(`已生效：${interfaceName}（${effectiveOrgIds.length > 0 ? effectiveOrgIds.map((orgId) => getOrgLabel(orgId)).join("、") : "全部机构"}）`);
     await loadData();
     return true;
@@ -504,18 +499,7 @@ export function useInterfacesPageModel() {
     row: InterfaceDefinition,
     effectiveOrgIds: string[] = []
   ): Promise<boolean> {
-    const draftResult = await configCenterService.saveInterfaceDraft(
-      toInterfaceDraftPayload(row),
-      {
-        inputConfig: normalizeInputConfig(row.inputConfigJson),
-        outputConfig: normalizeOutputConfig(row.outputConfigJson)
-      }
-    );
-    if (!draftResult.success || !draftResult.data) {
-      msgApi.error(draftResult.report.summary);
-      return false;
-    }
-    return publishInterfaceNow(draftResult.data.id, draftResult.data.name, effectiveOrgIds);
+    return publishInterfaceNow(row.id, row.name, effectiveOrgIds);
   }
 
   async function publishNoticeNow() {
@@ -537,7 +521,6 @@ export function useInterfacesPageModel() {
 
   function openDebug(row: InterfaceDefinition) {
     setDebugTarget(row);
-    setDebugEnv("TEST");
     setDebugPayload(row.bodyTemplateJson || "{}");
     setDebugResult(null);
     setDebugOpen(true);
@@ -550,24 +533,23 @@ export function useInterfacesPageModel() {
       name: values.name?.trim() || "未命名接口",
       description: values.description?.trim() || "",
       method: values.method ?? "POST",
-      testPath: values.testPath?.trim() || "/test/path",
+      testPath: values.prodPath?.trim() || "/prod/path",
       prodPath: values.prodPath?.trim() || "/prod/path",
-      url: values.prodPath?.trim() || values.testPath?.trim() || "/prod/path",
-      status: values.status ?? "DRAFT",
-      ownerOrgId: values.ownerOrgId ?? "branch-east",
+      url: values.prodPath?.trim() || "/prod/path",
+      status: editing?.status ?? "DRAFT",
+      ownerOrgId: editing?.ownerOrgId ?? draftOwnerOrgId,
       currentVersion: editing?.currentVersion ?? 1,
-      timeoutMs: values.timeoutMs ?? 3000,
-      retryTimes: values.retryTimes ?? 1,
+      timeoutMs: editing?.timeoutMs ?? 3000,
+      retryTimes: editing?.retryTimes ?? 0,
       bodyTemplateJson: values.bodyTemplateJson?.trim() ?? "{}",
       inputConfigJson: JSON.stringify(inputConfig),
       outputConfigJson: JSON.stringify(outputConfig),
       paramSourceSummary: buildInputSummary(inputConfig),
       responsePath: getResponsePath(outputConfig),
-      maskSensitive: values.maskSensitive ?? true,
+      maskSensitive: editing?.maskSensitive ?? true,
       updatedAt: new Date().toISOString()
     };
     setDebugTarget(target);
-    setDebugEnv("TEST");
     setDebugPayload(target.bodyTemplateJson || "{}");
     setDebugResult(null);
     setDebugOpen(true);
@@ -590,7 +572,7 @@ export function useInterfacesPageModel() {
     }
 
     const outputs = normalizeOutputConfig(debugTarget.outputConfigJson);
-    const requestPath = debugEnv === "TEST" ? debugTarget.testPath : debugTarget.prodPath;
+    const requestPath = debugTarget.prodPath;
     const latencyMs = 180 + Math.floor(Math.random() * 320);
     const responseBody = buildMockResponseBody(outputs);
 
@@ -739,8 +721,9 @@ export function useInterfacesPageModel() {
 
   return {
     drawerWidth, loading, rows, statusFilter, setStatusFilter, drawerOpen, setDrawerOpen, editing, inputTab, setInputTab,
-    inputConfig, outputConfig, outputSampleJson, setOutputSampleJson, debugOpen, setDebugOpen, debugTarget, debugEnv, setDebugEnv,
+    inputConfig, outputConfig, outputSampleJson, setOutputSampleJson, debugOpen, setDebugOpen, debugTarget,
     debugPayload, setDebugPayload, debugResult, form, holder,
+    msgApi,
     filteredRows, openCreate, openEdit, openClone, closeDrawer, addInputRow, updateInputRow, removeInputRow, parseBodyTemplate, addOutputRow,
     updateOutputRow, removeOutputRow, addOutputChildRow, updateOutputChildRow, removeOutputChildRow, parseOutputSample, submit, switchStatus, openDebug, openDebugDraft,
     runDebug, inputColumns, valueTypeOptions, tabLabels, statusColor,

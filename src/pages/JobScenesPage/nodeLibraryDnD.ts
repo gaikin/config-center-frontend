@@ -5,7 +5,6 @@ export const NODE_LIBRARY_DRAG_MIME = "application/x-job-scene-node-type";
 const VALID_NODE_TYPES: JobNodeDefinition["nodeType"][] = [
   "page_get",
   "api_call",
-  "list_lookup",
   "js_script",
   "page_set",
   "page_click",

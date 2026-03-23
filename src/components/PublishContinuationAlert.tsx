@@ -27,13 +27,13 @@ export function PublishContinuationAlert({
       closable
       type={warningCount > 0 ? "warning" : "success"}
       style={{ marginBottom: 12 }}
-      message={`${objectLabel}「${objectName}」已保存为待发布草稿`}
+      message={`${objectLabel}「${objectName}」已保存并立即生效`}
       description={
         <Space direction="vertical" style={{ width: "100%" }} size={8}>
           <Typography.Text type="secondary">
             {warningCount > 0
-              ? `当前还有 ${warningCount} 个待处理项，建议先处理后再发布当前对象。`
-              : "当前配置已进入待发布列表，可直接执行生效操作。"}
+              ? `当前还有 ${warningCount} 个待处理项，建议尽快处理。`
+              : "当前配置已立即生效。"}
           </Typography.Text>
           <Space>
             <Button type="primary" size="small" onClick={onGoPublish} disabled={actionDisabled} title={actionDisabledReason}>

@@ -34,7 +34,7 @@ describe("deriveNodeOutputReferenceOptions", () => {
     expect(options.map((item) => item.value)).not.toContain("{{node_3_result}}");
   });
 
-  it("includes list lookup output when it is upstream by graph edge even if order is later", () => {
+  it("does not include list lookup output even when it is upstream by graph edge", () => {
     const rows: JobNodeDefinition[] = [
       nodeOf({ id: 1, sceneId: 10, nodeType: "page_get", name: "页面取值", orderNo: 1, configJson: "{\"field\":\"customer_id\"}" }),
       nodeOf({ id: 2, sceneId: 10, nodeType: "page_set", name: "页面写值", orderNo: 2 }),
@@ -54,27 +54,8 @@ describe("deriveNodeOutputReferenceOptions", () => {
       [{ id: "e-4-2", source: "4", target: "2" } as never]
     );
 
-    expect(options.map((item) => item.value)).toContain("{{node_4_risk_match}}");
-  });
-
-  it("exposes all configured list lookup output fields", () => {
-    const rows: JobNodeDefinition[] = [
-      nodeOf({
-        id: 5,
-        sceneId: 10,
-        nodeType: "list_lookup",
-        name: "名单检索",
-        orderNo: 1,
-        configJson: "{\"resultKeys\":[\"risk_level\",\"risk_score\"]}"
-      }),
-      nodeOf({ id: 6, sceneId: 10, nodeType: "page_set", name: "页面写值", orderNo: 2 })
-    ];
-
-    const options = deriveNodeOutputReferenceOptions(rows, 6, [{ id: "e-5-6", source: "5", target: "6" } as never]);
     const values = options.map((item) => item.value);
-
-    expect(values).toContain("{{node_5_risk_level}}");
-    expect(values).toContain("{{node_5_risk_score}}");
+    expect(values).not.toContain("{{node_4_risk_match}}");
   });
 
   it("exposes script output keys for downstream references", () => {

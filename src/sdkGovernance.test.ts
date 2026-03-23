@@ -11,14 +11,12 @@ const platformConfig: PlatformRuntimeConfig = {
   promptGrayDefaultVersion: "1.4.0-rc.2",
   jobStableVersion: "2.1.0",
   jobGrayDefaultVersion: "2.2.0-rc.1",
-  updatedAt: "2026-03-18T00:00:00.000Z",
   updatedBy: "platform-admin"
 };
 
 const basePolicy: MenuSdkPolicy = {
   id: 1,
-  siteId: 1,
-  regionId: 11,
+  regionId: "trade",
   menuId: 101,
   menuCode: "loan_apply",
   promptGrayEnabled: true,
@@ -30,8 +28,7 @@ const basePolicy: MenuSdkPolicy = {
   effectiveStart: "2026-03-10 00:00",
   effectiveEnd: "2026-03-31 23:59",
   status: "ACTIVE",
-  ownerOrgId: "head-office",
-  updatedAt: "2026-03-18T00:00:00.000Z"
+  ownerOrgId: "head-office"
 };
 
 describe("sdkGovernance resolveEffectiveVersion", () => {

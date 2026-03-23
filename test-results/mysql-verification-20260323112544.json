@@ -1,0 +1,139 @@
+﻿{
+    "timestamp":  "2026-03-23 11:25:47",
+    "mode":  "mysql",
+    "total":  24,
+    "passed":  16,
+    "failed":  8,
+    "passes":  [
+                   {
+                       "module":  "Health",
+                       "step":  "backend mysql health check",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page menu + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page resource + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page element + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create business field + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page-field binding + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Rule",
+                       "step":  "create rule + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "JobScene",
+                       "step":  "create scene + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "DataProcessor",
+                       "step":  "create processor + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "ContextVariable",
+                       "step":  "create variable + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "create general config + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "create menu sdk policy + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Publish",
+                       "step":  "publish validate/logs + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Runtime",
+                       "step":  "prompt/job runtime logs endpoints",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "dashboard summary endpoints",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "FrontendContract",
+                       "step":  "instant-publish no pending-items contract required",
+                       "status":  "PASS"
+                   }
+               ],
+    "issues":  [
+                   {
+                       "module":  "Interface",
+                       "step":  "create interface + list echo + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "The remote server returned an error: (500) Internal Server Error."
+                   },
+                   {
+                       "module":  "Interface",
+                       "step":  "update interface status + echo",
+                       "status":  "FAIL",
+                       "detail":  "The remote server returned an error: (500) Internal Server Error."
+                   },
+                   {
+                       "module":  "Rule",
+                       "step":  "rule share/status/preview + condition workflow",
+                       "status":  "FAIL",
+                       "detail":  "The remote server returned an error: (500) Internal Server Error."
+                   },
+                   {
+                       "module":  "JobScene",
+                       "step":  "scene share/status/clone + node workflow",
+                       "status":  "FAIL",
+                       "detail":  "The remote server returned an error: (500) Internal Server Error."
+                   },
+                   {
+                       "module":  "DataProcessor",
+                       "step":  "update processor status",
+                       "status":  "FAIL",
+                       "detail":  "The remote server returned an error: (500) Internal Server Error."
+                   },
+                   {
+                       "module":  "ContextVariable",
+                       "step":  "update variable status",
+                       "status":  "FAIL",
+                       "detail":  "The remote server returned an error: (500) Internal Server Error."
+                   },
+                   {
+                       "module":  "Permission",
+                       "step":  "create resource + role + grants + members + mysql persistence",
+                       "status":  "FAIL",
+                       "detail":  "The remote server returned an error: (500) Internal Server Error."
+                   },
+                   {
+                       "module":  "Permission",
+                       "step":  "clone role + toggle status + session echo",
+                       "status":  "FAIL",
+                       "detail":  "远程服务器返回错误: (500) 内部服务器错误。"
+                   }
+               ]
+}

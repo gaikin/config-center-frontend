@@ -21,5 +21,11 @@ describe("JobScenesPage shared mode", () => {
 
     expect(html).toContain("共享状态");
     expect(html).toContain("复制为我的版本");
+    expect(html).toContain("共享设置");
+    expect(html).toContain("菜单");
+    expect(html).toContain("页面");
+    expect(html).toContain("全部");
+    expect(html).toContain("当前菜单");
+    expect(html).toContain("当前页面");
   });
 });

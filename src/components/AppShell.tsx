@@ -1,15 +1,16 @@
 import {
   ApiOutlined,
   AppstoreOutlined,
-  BarChartOutlined,
+  LogoutOutlined,
   BulbOutlined,
+  DatabaseOutlined,
   FileSearchOutlined,
-  HomeOutlined,
   MenuOutlined,
   RobotOutlined,
-  SettingOutlined
+  SettingOutlined,
+  TeamOutlined
 } from "@ant-design/icons";
-import { Button, Drawer, Layout, Menu, Select, Space, Typography } from "antd";
+import { Alert, Button, Card, Drawer, Form, Input, Layout, Menu, Select, Space, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -32,28 +33,14 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { key: "/", label: "我的工作台", icon: <HomeOutlined />, menuResourcePath: "/menu/dashboard" },
   { key: "/page-management", label: "菜单管理", icon: <AppstoreOutlined />, menuResourcePath: "/menu/page-management" },
   { key: "/prompts", label: "智能提示", icon: <BulbOutlined />, menuResourcePath: "/menu/prompts" },
   { key: "/jobs", label: "作业编排", icon: <RobotOutlined />, menuResourcePath: "/menu/jobs" },
   { key: "/interfaces", label: "API注册", icon: <ApiOutlined />, menuResourcePath: "/menu/interfaces" },
-  { key: "/stats", label: "运行统计", icon: <BarChartOutlined />, menuResourcePath: "/menu/stats" },
   { key: "/run-records", label: "运行记录", icon: <FileSearchOutlined />, menuResourcePath: "/menu/run-records" },
+  { key: "/public-fields", label: "公共字段", icon: <DatabaseOutlined />, menuResourcePath: "/menu/public-fields" },
+  { key: "/roles", label: "角色管理", icon: <TeamOutlined />, menuResourcePath: "/menu/roles" },
   { key: "/advanced", label: "高级配置", icon: <SettingOutlined />, menuResourcePath: "/menu/advanced" }
-];
-
-const compatiblePathToBizPath: Array<{ from: string; to: string }> = [
-  { from: "/publish", to: "/" },
-  { from: "/page-resources", to: "/page-management" },
-  { from: "/page-activation", to: "/page-management" },
-  { from: "/rules", to: "/prompts" },
-  { from: "/rule-templates", to: "/prompts" },
-  { from: "/job-scenes", to: "/jobs" },
-  { from: "/sdk-version-center", to: "/advanced" },
-  { from: "/permission-resources", to: "/advanced" },
-  { from: "/audit-metrics", to: "/stats" },
-  { from: "/preprocessors", to: "/advanced" },
-  { from: "/roles", to: "/advanced" }
 ];
 
 const HeaderBar = styled(Header)`
@@ -191,20 +178,32 @@ const HeaderActions = styled(Space)`
   }
 `;
 
+const LoginLayout = styled.div`
+  width: 100%;
+  min-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+`;
+
+const LoginCard = styled(Card)`
+  width: 100%;
+  max-width: 460px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-1);
+`;
+
 function normalizePath(pathname: string) {
-  const matched = compatiblePathToBizPath.find((item) => pathname.startsWith(item.from));
-  return matched?.to ?? pathname;
+  return pathname;
 }
 
 function getSelectedKey(pathname: string) {
   const normalized = normalizePath(pathname);
   const matched = navItems.find((item) => {
-    if (item.key === "/") {
-      return normalized === "/";
-    }
     return normalized.startsWith(item.key);
   });
-  return matched?.key ?? "/";
+  return matched?.key ?? "/page-management";
 }
 
 function renderMenuItems(items: NavItem[]) {
@@ -240,10 +239,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function AppShellLayout({ children }: { children: React.ReactNode }) {
-  const { persona, setPersona, hasResource, meta: currentMeta } = useMockSession();
+  const { persona, setPersona, hasResource, meta: currentMeta, isAuthenticated, login, logout, authLoading, currentUserId } =
+    useMockSession();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [loginForm] = Form.useForm<{ userId: string; password: string }>();
   const selected = getSelectedKey(location.pathname);
 
   const visibleNavItems = useMemo(() => {
@@ -251,30 +253,91 @@ function AppShellLayout({ children }: { children: React.ReactNode }) {
   }, [hasResource]);
 
   useEffect(() => {
+    if (!isMockModeEnabled) {
+      return;
+    }
     window.localStorage.setItem("config-center:mock-persona", persona);
   }, [persona]);
 
   useEffect(() => {
+    if (isMockModeEnabled || isAuthenticated) {
+      return;
+    }
+    loginForm.setFieldsValue({
+      userId: currentUserId
+    });
+  }, [currentUserId, isAuthenticated, loginForm]);
+
+  useEffect(() => {
+    if (!isMockModeEnabled && !isAuthenticated) {
+      return;
+    }
     const normalized = normalizePath(location.pathname);
     const canAccess = visibleNavItems.some((item) => {
-      if (item.key === "/") {
-        return normalized === "/";
-      }
       return normalized.startsWith(item.key);
     });
     if (!canAccess) {
       navigate(currentMeta.defaultPath, { replace: true });
     }
-  }, [currentMeta.defaultPath, location.pathname, navigate, visibleNavItems]);
+  }, [currentMeta.defaultPath, isAuthenticated, location.pathname, navigate, visibleNavItems]);
+
+  async function handleFormalLogin(values: { userId: string; password: string }) {
+    setLoginError("");
+    try {
+      await login(values);
+      const target = visibleNavItems[0]?.key ?? currentMeta.defaultPath;
+      navigate(target, { replace: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "登录失败，请核对账号与密码后重试";
+      setLoginError(message);
+    }
+  }
+
+  if (!isMockModeEnabled && !isAuthenticated) {
+    return (
+      <MainLayout style={{ minHeight: "100vh" }}>
+        <HeaderBar>
+          <LogoBlock>
+            <LogoPill>CONFIG CENTER</LogoPill>
+            <LogoTitle className="type-20">营小助配置中心</LogoTitle>
+            <LogoSubtitle className="type-12">统一身份登录</LogoSubtitle>
+          </LogoBlock>
+        </HeaderBar>
+        <LoginLayout>
+          <LoginCard title="欢迎登录">
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+              请输入登录账号与密码，系统将自动识别所属机构并加载可访问的功能模块。
+            </Typography.Paragraph>
+            {loginError ? (
+              <Alert type="error" showIcon message={loginError} style={{ marginBottom: 12 }} />
+            ) : null}
+            <Form form={loginForm} layout="vertical" onFinish={handleFormalLogin}>
+              <Form.Item name="userId" label="登录账号" rules={[{ required: true, message: "请输入登录账号" }]}>
+                <Input placeholder="请输入登录账号" autoComplete="username" />
+              </Form.Item>
+              <Form.Item name="password" label="登录密码" rules={[{ required: true, message: "请输入登录密码" }]}>
+                <Input.Password placeholder="请输入登录密码" autoComplete="current-password" />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" block loading={authLoading}>
+                进入配置中心
+              </Button>
+            </Form>
+          </LoginCard>
+        </LoginLayout>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout style={{ minHeight: "100vh" }}>
       <HeaderBar>
         <LogoBlock>
           <LogoPill>CONFIG CENTER</LogoPill>
-          <LogoTitle className="type-20">营小助配置中心（新版）</LogoTitle>
+          <LogoTitle className="type-20">营小助配置中心</LogoTitle>
           <LogoSubtitle className="type-12">
-            {isMockModeEnabled ? `模拟登录：${currentMeta.label} · ${currentMeta.description}` : "当前模式：正式模式"}
+            {isMockModeEnabled
+              ? `模拟身份：${currentMeta.label} · ${currentMeta.description}`
+              : `当前用户：${currentMeta.label} · ${currentMeta.description}`}
           </LogoSubtitle>
         </LogoBlock>
         <HeaderActions size={8}>
@@ -286,6 +349,11 @@ function AppShellLayout({ children }: { children: React.ReactNode }) {
               onChange={(next) => setPersona(next as MockUserPersona)}
               options={mockUserPersonaOptions}
             />
+          ) : null}
+          {!isMockModeEnabled ? (
+            <Button icon={<LogoutOutlined />} onClick={logout}>
+              退出登录
+            </Button>
           ) : null}
           <MobileNavButton icon={<MenuOutlined />} onClick={() => setDrawerOpen(true)}>
             导航

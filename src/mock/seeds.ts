@@ -1,7 +1,8 @@
 ﻿import type {
   BusinessFieldDefinition,
+  ContextVariableDefinition,
   DashboardOverview,
-  ExecutionLogItem,
+  GeneralConfigItem,
   JobExecutionRecord,
   PublishAuditLog,
   PublishPendingItem,
@@ -11,18 +12,14 @@
   JobNodeDefinition,
   JobNodeRunLog,
   JobSceneDefinition,
-  ListDataDefinition,
   MenuSdkPolicy,
   MenuCapabilityPolicy,
   MenuCapabilityRequest,
   PageElement,
   PageFieldBinding,
   PageMenu,
-  PageRegion,
   PageResource,
-  PageSite,
-  PageActivationPolicy,
-  PreprocessorDefinition,
+  DataProcessorDefinition,
   PermissionResource,
   RoleItem,
   RoleResourceGrant,
@@ -31,28 +28,15 @@
   RuleDefinition,
   PlatformRuntimeConfig,
   PromptHitRecord,
-  SdkArtifactVersion,
-  TriggerLogItem,
   UserRoleBinding
 } from "../types";
 
 const now = () => new Date().toISOString();
 
-export const seedPageSites: PageSite[] = [
-  { id: 1, code: "kaiyang", name: "开阳核心业务系统", status: "ACTIVE" },
-  { id: 2, code: "counter", name: "柜面统一办理系统", status: "ACTIVE" }
-];
-
-export const seedPageRegions: PageRegion[] = [
-  { id: 11, siteId: 1, regionCode: "loan_region", regionName: "贷款专区", status: "ACTIVE" },
-  { id: 21, siteId: 2, regionCode: "corp_region", regionName: "对公专区", status: "ACTIVE" }
-];
-
 export const seedPageMenus: PageMenu[] = [
   {
     id: 101,
-    siteId: 1,
-    regionId: 11,
+    regionId: "trade",
     menuName: "贷款申请",
     menuCode: "loan_apply",
     status: "ACTIVE",
@@ -60,8 +44,7 @@ export const seedPageMenus: PageMenu[] = [
   },
   {
     id: 102,
-    siteId: 1,
-    regionId: 11,
+    regionId: "task",
     menuName: "贷款审核",
     menuCode: "loan_review",
     status: "ACTIVE",
@@ -69,19 +52,34 @@ export const seedPageMenus: PageMenu[] = [
   },
   {
     id: 201,
-    siteId: 2,
-    regionId: 21,
+    regionId: "manage",
     menuName: "开户办理",
     menuCode: "open_account",
     status: "ACTIVE",
     ownerOrgId: "branch-south"
+  },
+  {
+    id: 301,
+    regionId: "business",
+    menuName: "Loan Process",
+    menuCode: "loan-process",
+    status: "ACTIVE",
+    ownerOrgId: "head-office"
+  },
+  {
+    id: 302,
+    regionId: "business",
+    menuName: "Manual Review",
+    menuCode: "manual-review",
+    status: "ACTIVE",
+    ownerOrgId: "head-office"
   }
 ];
 
 export const seedPageResources: PageResource[] = [
   {
     id: 1001,
-    menuId: 101,
+    menuCode: "loan-process",
     pageCode: "loan_apply_main",
     frameCode: "main-frame",
     name: "贷款申请主页面",
@@ -94,7 +92,7 @@ export const seedPageResources: PageResource[] = [
   },
   {
     id: 1002,
-    menuId: 101,
+    menuCode: "loan-process",
     pageCode: "loan_apply_collateral",
     frameCode: "collateral-iframe",
     name: "贷款申请抵押信息页",
@@ -107,7 +105,7 @@ export const seedPageResources: PageResource[] = [
   },
   {
     id: 1003,
-    menuId: 201,
+    menuCode: "manual-review",
     pageCode: "open_account_main",
     frameCode: "main-frame",
     name: "开户办理主页面",
@@ -127,7 +125,7 @@ export const seedPageElements: PageElement[] = [
     logicName: "客户号",
     selector: "//*[@id='customer-id']",
     selectorType: "XPATH",
-    required: true,
+    frameLocation: "main-frame",
     updatedAt: now()
   },
   {
@@ -136,7 +134,7 @@ export const seedPageElements: PageElement[] = [
     logicName: "客户证件号",
     selector: "#id-no",
     selectorType: "CSS",
-    required: true,
+    frameLocation: "main-frame",
     updatedAt: now()
   },
   {
@@ -145,7 +143,7 @@ export const seedPageElements: PageElement[] = [
     logicName: "客户手机号",
     selector: "#mobile",
     selectorType: "CSS",
-    required: false,
+    frameLocation: "main-frame",
     updatedAt: now()
   },
   {
@@ -154,7 +152,7 @@ export const seedPageElements: PageElement[] = [
     logicName: "抵押物类型",
     selector: "//*[@id='collateral-type']",
     selectorType: "XPATH",
-    required: false,
+    frameLocation: "collateral-iframe",
     updatedAt: now()
   },
   {
@@ -163,7 +161,7 @@ export const seedPageElements: PageElement[] = [
     logicName: "开户用途",
     selector: "//*[@name='purpose']",
     selectorType: "XPATH",
-    required: false,
+    frameLocation: "main-frame",
     updatedAt: now()
   }
 ];
@@ -286,73 +284,103 @@ export const seedPageFieldBindings: PageFieldBinding[] = [
   }
 ];
 
-export const seedSdkArtifactVersions: SdkArtifactVersion[] = [
-  {
-    id: 8001,
-    sdkVersion: "1.3.0",
-    sdkMajorVersion: 1,
-    loaderVersion: "1.0.2",
-    artifactManifestUrl: "/manifest/kaiyang/prod/1.3.0.json",
-    compatibility: "loader>=1.0.0, core/prompt/job/preview 分包兼容",
-    status: "ACTIVE",
-    publishedBy: "平台支持A",
-    publishedAt: now(),
-    notes: "智能提示正式版本。"
-  },
-  {
-    id: 8002,
-    sdkVersion: "1.4.0-rc.2",
-    sdkMajorVersion: 1,
-    loaderVersion: "1.0.2",
-    artifactManifestUrl: "/manifest/kaiyang/prod/1.4.0-rc.2.json",
-    compatibility: "新增 sdk-release-index 与菜单级灰度支持",
-    status: "DRAFT",
-    publishedBy: "平台支持A",
-    publishedAt: now(),
-    notes: "智能提示灰度候选版本。"
-  },
-  {
-    id: 8003,
-    sdkVersion: "2.1.0",
-    sdkMajorVersion: 2,
-    loaderVersion: "1.0.2",
-    artifactManifestUrl: "/manifest/kaiyang/prod/2.1.0.json",
-    compatibility: "job-runtime 稳定版本",
-    status: "ACTIVE",
-    publishedBy: "平台支持B",
-    publishedAt: now(),
-    notes: "智能作业正式版本。"
-  },
-  {
-    id: 8004,
-    sdkVersion: "2.2.0-rc.1",
-    sdkMajorVersion: 2,
-    loaderVersion: "1.0.2",
-    artifactManifestUrl: "/manifest/kaiyang/prod/2.2.0-rc.1.json",
-    compatibility: "作业回填链路灰度增强",
-    status: "DRAFT",
-    publishedBy: "平台支持B",
-    publishedAt: now(),
-    notes: "智能作业灰度候选版本。"
-  }
-];
-
 export const seedPlatformRuntimeConfig: PlatformRuntimeConfig = {
   promptStableVersion: "1.3.0",
   promptGrayDefaultVersion: "1.4.0-rc.2",
   jobStableVersion: "2.1.0",
   jobGrayDefaultVersion: "2.2.0-rc.1",
-  updatedAt: now(),
   updatedBy: "person-platform-admin"
 };
+
+export const seedGeneralConfigItems: GeneralConfigItem[] = [
+  {
+    id: 3701,
+    groupKey: "platform-runtime",
+    itemKey: "promptStableVersion",
+    itemValue: seedPlatformRuntimeConfig.promptStableVersion,
+    description: "智能提示正式版本",
+    status: "ACTIVE",
+    orderNo: 1,
+    updatedAt: now()
+  },
+  {
+    id: 3702,
+    groupKey: "platform-runtime",
+    itemKey: "promptGrayDefaultVersion",
+    itemValue: seedPlatformRuntimeConfig.promptGrayDefaultVersion ?? "",
+    description: "智能提示默认灰度版本",
+    status: "ACTIVE",
+    orderNo: 2,
+    updatedAt: now()
+  },
+  {
+    id: 3703,
+    groupKey: "platform-runtime",
+    itemKey: "jobStableVersion",
+    itemValue: seedPlatformRuntimeConfig.jobStableVersion,
+    description: "智能作业正式版本",
+    status: "ACTIVE",
+    orderNo: 3,
+    updatedAt: now()
+  },
+  {
+    id: 3704,
+    groupKey: "platform-runtime",
+    itemKey: "jobGrayDefaultVersion",
+    itemValue: seedPlatformRuntimeConfig.jobGrayDefaultVersion ?? "",
+    description: "智能作业默认灰度版本",
+    status: "ACTIVE",
+    orderNo: 4,
+    updatedAt: now()
+  },
+  {
+    id: 3705,
+    groupKey: "region",
+    itemKey: "trade",
+    itemValue: "交易中心",
+    description: "交易中心专区",
+    status: "ACTIVE",
+    orderNo: 1,
+    updatedAt: now()
+  },
+  {
+    id: 3706,
+    groupKey: "region",
+    itemKey: "task",
+    itemValue: "任务中心",
+    description: "任务中心专区",
+    status: "ACTIVE",
+    orderNo: 2,
+    updatedAt: now()
+  },
+  {
+    id: 3707,
+    groupKey: "region",
+    itemKey: "manage",
+    itemValue: "管理中心",
+    description: "管理中心专区",
+    status: "ACTIVE",
+    orderNo: 3,
+    updatedAt: now()
+  },
+  {
+    id: 3708,
+    groupKey: "region",
+    itemKey: "business",
+    itemValue: "业务入口",
+    description: "业务入口专区",
+    status: "ACTIVE",
+    orderNo: 4,
+    updatedAt: now()
+  }
+];
 
 export const seedMenuSdkPolicies: MenuSdkPolicy[] = [
   {
     id: 8201,
-    siteId: 1,
-    regionId: 11,
     menuId: 101,
     menuCode: "loan_apply",
+    regionId: "trade",
     promptGrayEnabled: true,
     promptGrayVersion: "1.4.0-rc.2",
     promptGrayOrgIds: ["branch-east", "branch-east-sub1"],
@@ -362,15 +390,13 @@ export const seedMenuSdkPolicies: MenuSdkPolicy[] = [
     effectiveStart: "2026-03-14 09:00",
     effectiveEnd: "2026-03-31 23:59",
     status: "DRAFT",
-    ownerOrgId: "head-office",
-    updatedAt: now()
+    ownerOrgId: "head-office"
   },
   {
     id: 8202,
-    siteId: 2,
-    regionId: 21,
     menuId: 201,
     menuCode: "open_account",
+    regionId: "manage",
     promptGrayEnabled: false,
     promptGrayVersion: undefined,
     promptGrayOrgIds: [],
@@ -380,8 +406,7 @@ export const seedMenuSdkPolicies: MenuSdkPolicy[] = [
     effectiveStart: "2026-03-14 09:00",
     effectiveEnd: "2026-12-31 23:59",
     status: "ACTIVE",
-    ownerOrgId: "head-office",
-    updatedAt: now()
+    ownerOrgId: "head-office"
   }
 ];
 
@@ -391,79 +416,25 @@ export const seedMenuCapabilityPolicies: MenuCapabilityPolicy[] = [
     menuId: 101,
     promptStatus: "ENABLED",
     jobStatus: "ENABLED",
-    status: "ACTIVE",
-    updatedAt: now(),
-    updatedBy: "person-platform-admin"
+    status: "ACTIVE"
   },
   {
     id: 8402,
     menuId: 102,
     promptStatus: "DISABLED",
     jobStatus: "DISABLED",
-    status: "DRAFT",
-    updatedAt: now(),
-    updatedBy: "person-platform-admin"
+    status: "DRAFT"
   },
   {
     id: 8403,
     menuId: 201,
-    promptStatus: "PENDING",
+    promptStatus: "DISABLED",
     jobStatus: "ENABLED",
-    status: "DRAFT",
-    updatedAt: now(),
-    updatedBy: "person-platform-admin"
+    status: "DRAFT"
   }
 ];
 
-export const seedMenuCapabilityRequests: MenuCapabilityRequest[] = [
-  {
-    id: 8501,
-    menuId: 201,
-    capabilityType: "PROMPT",
-    reason: "开户办理场景需要补充提示开通，减少漏填。",
-    status: "PENDING",
-    applicant: "person-business-manager-south",
-    createdAt: now()
-  }
-];
-
-export const seedPageActivationPolicies: PageActivationPolicy[] = [
-  {
-    id: 8301,
-    pageResourceId: 1001,
-    enabled: true,
-    promptRuleSetName: "贷款申请提示规则集",
-    hasJobScenes: true,
-    jobPreloadPolicy: "idle",
-    jobSceneName: "贷款申请自动查数预填",
-    status: "ACTIVE",
-    ownerOrgId: "branch-east",
-    updatedAt: now()
-  },
-  {
-    id: 8302,
-    pageResourceId: 1002,
-    enabled: false,
-    promptRuleSetName: "贷款申请抵押信息补录",
-    hasJobScenes: false,
-    jobPreloadPolicy: "none",
-    status: "DRAFT",
-    ownerOrgId: "branch-east",
-    updatedAt: now()
-  },
-  {
-    id: 8303,
-    pageResourceId: 1003,
-    enabled: true,
-    promptRuleSetName: "开户办理完整性规则集",
-    hasJobScenes: true,
-    jobPreloadPolicy: "intent",
-    jobSceneName: "开户证件信息同步",
-    status: "DRAFT",
-    ownerOrgId: "branch-south",
-    updatedAt: now()
-  }
-];
+export const seedMenuCapabilityRequests: MenuCapabilityRequest[] = [];
 
 export const seedInterfaces: InterfaceDefinition[] = [
   {
@@ -514,34 +485,33 @@ export const seedInterfaces: InterfaceDefinition[] = [
   }
 ];
 
-export const seedPreprocessors: PreprocessorDefinition[] = [
+export const seedDataProcessors: DataProcessorDefinition[] = [
   {
-    id: 3501,
-    name: "去空格",
-    processorType: "BUILT_IN",
-    category: "STRING",
+    id: 3511,
+    name: "字符串去空格",
+    paramCount: 1,
+    functionCode: "function transform(input) { return String(input ?? '').trim(); }",
     status: "ACTIVE",
-    ownerOrgId: "head-office",
     usedByCount: 22,
     updatedAt: now()
   },
   {
-    id: 3502,
-    name: "日期格式化 yyyy-MM-dd",
-    processorType: "BUILT_IN",
-    category: "DATE",
+    id: 3512,
+    name: "日期转 yyyy-MM-dd",
+    paramCount: 1,
+    functionCode:
+      "function transform(input) { const d = new Date(String(input ?? '')); return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); }",
     status: "ACTIVE",
-    ownerOrgId: "head-office",
     usedByCount: 14,
     updatedAt: now()
   },
   {
-    id: 3503,
-    name: "手机号脱敏脚本",
-    processorType: "SCRIPT",
-    category: "STRING",
+    id: 3513,
+    name: "手机号脱敏",
+    paramCount: 1,
+    functionCode:
+      "function transform(input) { const digits = String(input ?? '').replace(/\\\\D/g, ''); return digits.length >= 7 ? `${digits.slice(0, 3)}****${digits.slice(-4)}` : String(input ?? ''); }",
     status: "DRAFT",
-    ownerOrgId: "branch-east",
     usedByCount: 4,
     updatedAt: now()
   }
@@ -609,18 +579,18 @@ export const seedRuleConditions: RuleCondition[] = [
     id: 41101,
     ruleId: 4001,
     groupId: 41001,
-    left: { sourceType: "INTERFACE_FIELD", key: "risk_score", preprocessorIds: [] },
+    left: { sourceType: "INTERFACE_FIELD", key: "risk_score", dataProcessorIds: [] },
     operator: "GE",
-    right: { sourceType: "CONST", key: "80", constValue: "80", preprocessorIds: [] },
+    right: { sourceType: "CONST", key: "80", constValue: "80", dataProcessorIds: [] },
     updatedAt: now()
   },
   {
     id: 41102,
     ruleId: 4001,
     groupId: 41002,
-    left: { sourceType: "CONTEXT", key: "user_role", preprocessorIds: [] },
+    left: { sourceType: "CONTEXT", key: "user_role", dataProcessorIds: [] },
     operator: "EQ",
-    right: { sourceType: "CONST", key: "new_staff", constValue: "new_staff", preprocessorIds: [] },
+    right: { sourceType: "CONST", key: "new_staff", constValue: "new_staff", dataProcessorIds: [] },
     updatedAt: now()
   },
   {
@@ -632,7 +602,7 @@ export const seedRuleConditions: RuleCondition[] = [
       key: "risk_level",
       displayValue: "高风险客户名单.risk_level",
       valueType: "STRING",
-      preprocessorIds: [],
+      dataProcessorIds: [],
       listBinding: {
         listDataId: 6001,
         listDataName: "高风险客户名单",
@@ -647,21 +617,21 @@ export const seedRuleConditions: RuleCondition[] = [
       }
     },
     operator: "EQ",
-    right: { sourceType: "CONST", key: "HIGH", constValue: "HIGH", preprocessorIds: [] },
+    right: { sourceType: "CONST", key: "HIGH", constValue: "HIGH", dataProcessorIds: [] },
     updatedAt: now()
   },
   {
     id: 42101,
     ruleId: 4002,
     groupId: 42001,
-    left: { sourceType: "PAGE_FIELD", key: "account_purpose", preprocessorIds: [3501] },
+    left: { sourceType: "PAGE_FIELD", key: "account_purpose", dataProcessorIds: [3511] },
     operator: "EXISTS",
     updatedAt: now()
   }
 ];
 
 export const seedPendingSummary: PublishPendingSummary = {
-  draftCount: 6,
+  draftCount: 5,
   expiringSoonCount: 1,
   validationFailedCount: 1,
   conflictCount: 0,
@@ -711,26 +681,16 @@ export const seedPendingItems: PublishPendingItem[] = [
   },
   {
     id: 5,
-    resourceType: "LIST_DATA",
-    resourceId: 6002,
-    resourceName: "身份证白名单",
-    status: "DRAFT",
-    ownerOrgId: "branch-south",
-    pendingType: "DRAFT",
-    updatedAt: now()
-  },
-  {
-    id: 6,
     resourceType: "PREPROCESSOR",
-    resourceId: 3503,
-    resourceName: "手机号脱敏脚本",
+    resourceId: 3513,
+    resourceName: "手机号脱敏",
     status: "DRAFT",
     ownerOrgId: "branch-east",
     pendingType: "DRAFT",
     updatedAt: now()
   },
   {
-    id: 7,
+    id: 6,
     resourceType: "MENU_SDK_POLICY",
     resourceId: 8201,
     resourceName: "贷款申请菜单 SDK 灰度策略",
@@ -738,72 +698,48 @@ export const seedPendingItems: PublishPendingItem[] = [
     ownerOrgId: "head-office",
     pendingType: "DRAFT",
     updatedAt: now()
-  },
-  {
-    id: 8,
-    resourceType: "PAGE_ACTIVATION_POLICY",
-    resourceId: 8303,
-    resourceName: "开户办理主页面启用策略",
-    status: "DRAFT",
-    ownerOrgId: "branch-south",
-    pendingType: "DRAFT",
-    updatedAt: now()
   }
 ];
 
-export const seedListDatas: ListDataDefinition[] = [
+export const seedContextVariables: ContextVariableDefinition[] = [
   {
-    id: 6001,
-    name: "高风险客户名单",
-    description: "用于贷款申请高风险命中判断。",
-    ownerOrgId: "branch-east",
-    scope: "贷款专区 / 东部分行",
-    effectiveStartAt: "2026-03-01",
-    effectiveEndAt: "2026-12-31",
+    id: 3601,
+    key: "org_id",
+    label: "机构ID",
+    valueSource: "STATIC",
+    staticValue: "branch-east",
     status: "ACTIVE",
-    currentVersion: 3,
-    rowCount: 1280,
-    importColumns: ["customer_id", "id_no", "mobile", "risk_level", "risk_score", "risk_tag", "expire_at"],
-    outputFields: ["risk_level", "risk_score", "risk_tag", "expire_at"],
-    importFileName: "high-risk-customers-v3.xlsx",
-    indexBuildStatus: "READY",
-    activeAlias: "cc_list_data_6001_active",
-    updatedAt: now()
-  },
-  {
-    id: 6002,
-    name: "身份证白名单",
-    description: "用于开户场景白名单核验。",
-    ownerOrgId: "branch-south",
-    scope: "对公专区 / 南部分行",
-    effectiveStartAt: "2026-03-10",
-    effectiveEndAt: "2026-09-30",
-    status: "DRAFT",
-    currentVersion: 1,
-    rowCount: 320,
-    importColumns: ["id_no", "customer_id", "whitelist_flag", "effective_date", "remark"],
-    outputFields: ["whitelist_flag", "effective_date", "remark"],
-    importFileName: "id-whitelist.xlsx",
-    indexBuildStatus: "PENDING",
-    activeAlias: "cc_list_data_6002_active",
-    updatedAt: now()
-  },
-  {
-    id: 6003,
-    name: "存量授信观察名单",
-    description: "用于授信客户存量观察和风险跟踪。",
     ownerOrgId: "head-office",
-    scope: "贷款专区 / 全机构",
-    effectiveStartAt: "2026-03-05",
-    effectiveEndAt: "2026-08-31",
+    updatedAt: now()
+  },
+  {
+    id: 3602,
+    key: "operator_role",
+    label: "操作员角色",
+    valueSource: "SCRIPT",
+    scriptContent: "return context.operator_role || context.user_role || '客户经理';",
     status: "ACTIVE",
-    currentVersion: 2,
-    rowCount: 860,
-    importColumns: ["customer_id", "mobile", "control_level", "risk_reason", "owner_team"],
-    outputFields: ["control_level", "risk_reason", "owner_team"],
-    importFileName: "credit-watch-list-v2.xlsx",
-    indexBuildStatus: "READY",
-    activeAlias: "cc_list_data_6003_active",
+    ownerOrgId: "head-office",
+    updatedAt: now()
+  },
+  {
+    id: 3603,
+    key: "channel",
+    label: "办理渠道",
+    valueSource: "SCRIPT",
+    scriptContent: "return context.channel || '柜面';",
+    status: "ACTIVE",
+    ownerOrgId: "head-office",
+    updatedAt: now()
+  },
+  {
+    id: 3604,
+    key: "user_role",
+    label: "用户角色",
+    valueSource: "STATIC",
+    staticValue: "新员工",
+    status: "ACTIVE",
+    ownerOrgId: "head-office",
     updatedAt: now()
   }
 ];
@@ -843,75 +779,6 @@ export const seedAuditLogs: PublishAuditLog[] = [
     resourceId: 8201,
     resourceName: "贷款申请菜单 SDK 灰度策略",
     operator: "person-business-manager-east",
-    createdAt: now()
-  }
-];
-
-export const seedTriggerLogs: TriggerLogItem[] = [
-  {
-    id: 10001,
-    ruleName: "贷款高风险强提示",
-    pageResourceName: "贷款申请主页面",
-    triggerResult: "HIT",
-    reason: "风险评分 >= 80",
-    operator: "person-zhang-san",
-    createdAt: now()
-  },
-  {
-    id: 10002,
-    ruleName: "开户信息完整性提醒",
-    pageResourceName: "开户办理主页面",
-    triggerResult: "MISS",
-    reason: "开户用途字段为空，不满足提醒条件",
-    operator: "person-li-si",
-    createdAt: now()
-  },
-  {
-    id: 10003,
-    ruleName: "开户信息完整性提醒",
-    pageResourceName: "开户办理主页面",
-    triggerResult: "FAILED",
-    reason: "接口超时：customer/profile/query",
-    operator: "person-wang-wu",
-    createdAt: now()
-  }
-];
-
-export const seedExecutionLogs: ExecutionLogItem[] = [
-  {
-    id: 11001,
-    sceneName: "贷款申请自动查数预填",
-    triggerSource: "PROMPT_CONFIRM",
-    result: "SUCCESS",
-    latencyMs: 940,
-    reason: "全部节点执行成功",
-    createdAt: now()
-  },
-  {
-    id: 11002,
-    sceneName: "开户证件信息同步",
-    triggerSource: "AUTO",
-    result: "FAILED",
-    latencyMs: 2110,
-    reason: "页面元素缺失",
-    createdAt: now()
-  },
-  {
-    id: 11003,
-    sceneName: "贷款申请自动查数预填",
-    triggerSource: "FLOATING_BUTTON",
-    result: "PARTIAL_SUCCESS",
-    latencyMs: 1530,
-    reason: "2 个字段已跳过（只读）",
-    createdAt: now()
-  },
-  {
-    id: 11004,
-    sceneName: "开户证件信息同步",
-    triggerSource: "AUTO",
-    result: "FAILED",
-    latencyMs: 1788,
-    reason: "接口超时",
     createdAt: now()
   }
 ];
@@ -1046,17 +913,6 @@ export const seedRoles: RoleItem[] = [
 
 export const seedPermissionResources: PermissionResource[] = [
   {
-    id: 91001,
-    resourceCode: "menu_dashboard",
-    resourceName: "工作台菜单",
-    resourceType: "MENU",
-    resourcePath: "/menu/dashboard",
-    status: "ACTIVE",
-    orderNo: 10,
-    description: "导航入口：我的工作台",
-    updatedAt: now()
-  },
-  {
     id: 91002,
     resourceCode: "menu_page_management",
     resourceName: "菜单管理菜单",
@@ -1102,13 +958,13 @@ export const seedPermissionResources: PermissionResource[] = [
   },
   {
     id: 91006,
-    resourceCode: "menu_stats",
-    resourceName: "运行统计菜单",
+    resourceCode: "menu_public_fields",
+    resourceName: "公共字段菜单",
     resourceType: "MENU",
-    resourcePath: "/menu/stats",
+    resourcePath: "/menu/public-fields",
     status: "ACTIVE",
     orderNo: 60,
-    description: "导航入口：运行统计",
+    description: "导航入口：公共字段",
     updatedAt: now()
   },
   {
@@ -1134,15 +990,14 @@ export const seedPermissionResources: PermissionResource[] = [
     updatedAt: now()
   },
   {
-    id: 91101,
-    resourceCode: "page_dashboard_list",
-    resourceName: "工作台页面",
-    resourceType: "PAGE",
-    resourcePath: "/page/dashboard/list",
-    pagePath: "/",
+    id: 91009,
+    resourceCode: "menu_roles",
+    resourceName: "角色管理菜单",
+    resourceType: "MENU",
+    resourcePath: "/menu/roles",
     status: "ACTIVE",
-    orderNo: 110,
-    description: "页面访问：我的工作台",
+    orderNo: 68,
+    description: "导航入口：角色管理",
     updatedAt: now()
   },
   {
@@ -1195,14 +1050,14 @@ export const seedPermissionResources: PermissionResource[] = [
   },
   {
     id: 91106,
-    resourceCode: "page_stats_list",
-    resourceName: "运行统计页面",
+    resourceCode: "page_public_fields_list",
+    resourceName: "公共字段页面",
     resourceType: "PAGE",
-    resourcePath: "/page/stats/list",
-    pagePath: "/stats",
+    resourcePath: "/page/public-fields/list",
+    pagePath: "/public-fields",
     status: "ACTIVE",
     orderNo: 160,
-    description: "页面访问：运行统计",
+    description: "页面访问：公共字段",
     updatedAt: now()
   },
   {
@@ -1227,6 +1082,18 @@ export const seedPermissionResources: PermissionResource[] = [
     status: "ACTIVE",
     orderNo: 165,
     description: "页面访问：运行记录",
+    updatedAt: now()
+  },
+  {
+    id: 91109,
+    resourceCode: "page_roles_list",
+    resourceName: "角色管理页面",
+    resourceType: "PAGE",
+    resourcePath: "/page/roles/list",
+    pagePath: "/roles",
+    status: "ACTIVE",
+    orderNo: 168,
+    description: "页面访问：角色管理",
     updatedAt: now()
   },
   {
@@ -1309,70 +1176,54 @@ export const seedPermissionResources: PermissionResource[] = [
 ];
 
 export const seedRoleResourceGrants: RoleResourceGrant[] = [
-  { id: 92001, roleId: 7001, resourceCode: "menu_dashboard", createdAt: now() },
   { id: 92002, roleId: 7001, resourceCode: "menu_page_management", createdAt: now() },
   { id: 92003, roleId: 7001, resourceCode: "menu_prompts", createdAt: now() },
   { id: 92004, roleId: 7001, resourceCode: "menu_jobs", createdAt: now() },
   { id: 92005, roleId: 7001, resourceCode: "menu_interfaces", createdAt: now() },
-  { id: 92006, roleId: 7001, resourceCode: "menu_stats", createdAt: now() },
+  { id: 92006, roleId: 7001, resourceCode: "menu_public_fields", createdAt: now() },
   { id: 92019, roleId: 7001, resourceCode: "menu_run_records", createdAt: now() },
   { id: 92007, roleId: 7001, resourceCode: "menu_advanced", createdAt: now() },
-  { id: 92008, roleId: 7001, resourceCode: "page_dashboard_list", createdAt: now() },
   { id: 92009, roleId: 7001, resourceCode: "page_page_management_list", createdAt: now() },
   { id: 92010, roleId: 7001, resourceCode: "page_prompts_list", createdAt: now() },
   { id: 92011, roleId: 7001, resourceCode: "page_jobs_list", createdAt: now() },
   { id: 92012, roleId: 7001, resourceCode: "page_interfaces_list", createdAt: now() },
-  { id: 92013, roleId: 7001, resourceCode: "page_stats_list", createdAt: now() },
+  { id: 92013, roleId: 7001, resourceCode: "page_public_fields_list", createdAt: now() },
   { id: 92020, roleId: 7001, resourceCode: "page_run_records_list", createdAt: now() },
   { id: 92014, roleId: 7001, resourceCode: "page_advanced_list", createdAt: now() },
   { id: 92015, roleId: 7001, resourceCode: "action_common_view", createdAt: now() },
   { id: 92016, roleId: 7001, resourceCode: "action_common_config", createdAt: now() },
   { id: 92017, roleId: 7001, resourceCode: "action_common_validate", createdAt: now() },
   { id: 92018, roleId: 7001, resourceCode: "action_common_publish", createdAt: now() },
-
-  { id: 92101, roleId: 7002, resourceCode: "menu_dashboard", createdAt: now() },
-  { id: 92102, roleId: 7002, resourceCode: "menu_stats", createdAt: now() },
   { id: 92103, roleId: 7002, resourceCode: "menu_advanced", createdAt: now() },
-  { id: 92104, roleId: 7002, resourceCode: "page_dashboard_list", createdAt: now() },
-  { id: 92105, roleId: 7002, resourceCode: "page_stats_list", createdAt: now() },
+  { id: 92104, roleId: 7002, resourceCode: "menu_roles", createdAt: now() },
   { id: 92106, roleId: 7002, resourceCode: "page_advanced_list", createdAt: now() },
+  { id: 92105, roleId: 7002, resourceCode: "page_roles_list", createdAt: now() },
   { id: 92107, roleId: 7002, resourceCode: "action_common_view", createdAt: now() },
   { id: 92108, roleId: 7002, resourceCode: "action_roles_manage", createdAt: now() },
-
-  { id: 92201, roleId: 7003, resourceCode: "menu_dashboard", createdAt: now() },
-  { id: 92202, roleId: 7003, resourceCode: "menu_stats", createdAt: now() },
   { id: 92203, roleId: 7003, resourceCode: "menu_advanced", createdAt: now() },
-  { id: 92204, roleId: 7003, resourceCode: "page_dashboard_list", createdAt: now() },
-  { id: 92205, roleId: 7003, resourceCode: "page_stats_list", createdAt: now() },
+  { id: 92204, roleId: 7003, resourceCode: "menu_roles", createdAt: now() },
   { id: 92206, roleId: 7003, resourceCode: "page_advanced_list", createdAt: now() },
+  { id: 92205, roleId: 7003, resourceCode: "page_roles_list", createdAt: now() },
   { id: 92207, roleId: 7003, resourceCode: "action_common_view", createdAt: now() },
   { id: 92208, roleId: 7003, resourceCode: "action_roles_manage", createdAt: now() },
   { id: 92209, roleId: 7003, resourceCode: "action_menu_capability_manage", createdAt: now() },
-
-  { id: 92301, roleId: 7004, resourceCode: "menu_dashboard", createdAt: now() },
-  { id: 92302, roleId: 7004, resourceCode: "menu_stats", createdAt: now() },
   { id: 92308, roleId: 7004, resourceCode: "menu_run_records", createdAt: now() },
-  { id: 92303, roleId: 7004, resourceCode: "page_dashboard_list", createdAt: now() },
-  { id: 92304, roleId: 7004, resourceCode: "page_stats_list", createdAt: now() },
   { id: 92309, roleId: 7004, resourceCode: "page_run_records_list", createdAt: now() },
   { id: 92305, roleId: 7004, resourceCode: "action_common_view", createdAt: now() },
   { id: 92306, roleId: 7004, resourceCode: "action_common_validate", createdAt: now() },
   { id: 92307, roleId: 7004, resourceCode: "action_common_audit_view", createdAt: now() },
-
-  { id: 92401, roleId: 7005, resourceCode: "menu_dashboard", createdAt: now() },
   { id: 92402, roleId: 7005, resourceCode: "menu_page_management", createdAt: now() },
   { id: 92403, roleId: 7005, resourceCode: "menu_prompts", createdAt: now() },
   { id: 92404, roleId: 7005, resourceCode: "menu_jobs", createdAt: now() },
   { id: 92405, roleId: 7005, resourceCode: "menu_interfaces", createdAt: now() },
-  { id: 92406, roleId: 7005, resourceCode: "menu_stats", createdAt: now() },
+  { id: 92406, roleId: 7005, resourceCode: "menu_public_fields", createdAt: now() },
   { id: 92420, roleId: 7005, resourceCode: "menu_run_records", createdAt: now() },
   { id: 92407, roleId: 7005, resourceCode: "menu_advanced", createdAt: now() },
-  { id: 92408, roleId: 7005, resourceCode: "page_dashboard_list", createdAt: now() },
   { id: 92409, roleId: 7005, resourceCode: "page_page_management_list", createdAt: now() },
   { id: 92410, roleId: 7005, resourceCode: "page_prompts_list", createdAt: now() },
   { id: 92411, roleId: 7005, resourceCode: "page_jobs_list", createdAt: now() },
   { id: 92412, roleId: 7005, resourceCode: "page_interfaces_list", createdAt: now() },
-  { id: 92413, roleId: 7005, resourceCode: "page_stats_list", createdAt: now() },
+  { id: 92413, roleId: 7005, resourceCode: "page_public_fields_list", createdAt: now() },
   { id: 92421, roleId: 7005, resourceCode: "page_run_records_list", createdAt: now() },
   { id: 92414, roleId: 7005, resourceCode: "page_advanced_list", createdAt: now() },
   { id: 92415, roleId: 7005, resourceCode: "action_common_view", createdAt: now() },
@@ -1417,3 +1268,4 @@ export const seedDashboardOverview: DashboardOverview = {
     expiringSoonResourceCount: 7
   }
 };
+

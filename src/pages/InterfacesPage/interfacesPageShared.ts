@@ -10,21 +10,14 @@ import type {
   LifecycleState
 } from "../../types";
 
-export type StatusFilter = "ALL" | LifecycleState;
+export type StatusFilter = "ALL" | InterfaceDefinition["status"];
 export type InputTabKey = "headers" | "query" | "path" | "body";
-export type DebugEnv = "TEST" | "PROD";
 
 export type ApiRegisterForm = {
   name: string;
   description: string;
   method: InterfaceDefinition["method"];
-  testPath: string;
   prodPath: string;
-  timeoutMs: number;
-  retryTimes: number;
-  status: LifecycleState;
-  ownerOrgId: string;
-  maskSensitive: boolean;
   bodyTemplateJson: string;
 };
 
@@ -227,7 +220,7 @@ export function flattenBodyParams(value: unknown, prefix = ""): ApiInputParam[] 
   ];
 }
 
-export function parseOutputFromSampleObject(value: unknown, basePath = "$.data"): ApiOutputParam[] {
+export function parseOutputFromSampleObject(value: unknown, basePath = "$"): ApiOutputParam[] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return [];
   }
@@ -290,9 +283,9 @@ export function buildInputSummary(config: InputConfigDraft) {
 
 export function getResponsePath(outputs: ApiOutputParam[]) {
   if (outputs.length === 0) {
-    return "$.data";
+    return "$";
   }
-  return outputs[0].path || "$.data";
+  return outputs[0].path || "$";
 }
 
 export function updateByPath(target: Record<string, unknown>, path: string, value: unknown) {
@@ -345,9 +338,13 @@ export function buildMockFieldValue(field: ApiOutputParam): unknown {
 }
 
 export function buildMockResponseBody(outputs: ApiOutputParam[]) {
-  const root: Record<string, unknown> = { data: {} };
+  const root: Record<string, unknown> = {};
   for (const field of outputs) {
-    updateByPath(root, field.path || `$.data.${field.name}`, buildMockFieldValue(field));
+    const targetPath = field.path || (field.name ? `$.${field.name}` : "");
+    if (!targetPath) {
+      continue;
+    }
+    updateByPath(root, targetPath, buildMockFieldValue(field));
   }
   return root;
 }

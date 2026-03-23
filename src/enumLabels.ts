@@ -1,11 +1,12 @@
 import type {
-  ExecutionLogItem,
   PublishAuditLog,
   PublishPendingItem,
   JobExecutionSummary,
   LifecycleState,
   PromptMode,
-  TriggerLogItem
+  JobExecutionResult,
+  JobExecutionTriggerSource,
+  PromptTriggerResult
 } from "./types";
 
 export const lifecycleLabelMap: Record<LifecycleState, string> = {
@@ -26,7 +27,7 @@ export const promptModeLabelMap: Record<PromptMode, string> = {
 };
 
 export const pendingTypeLabelMap: Record<PublishPendingItem["pendingType"], string> = {
-  DRAFT: "待发布",
+  DRAFT: "草稿",
   EXPIRING_SOON: "即将到期",
   VALIDATION_FAILED: "检查未通过",
   CONFLICT: "冲突",
@@ -38,10 +39,8 @@ export const resourceTypeLabelMap: Record<PublishPendingItem["resourceType"] | "
   RULE: "提示规则",
   JOB_SCENE: "作业场景",
   INTERFACE: "API",
-  LIST_DATA: "名单",
-  PREPROCESSOR: "数据转换规则",
+  PREPROCESSOR: "数据处理函数",
   MENU_SDK_POLICY: "菜单能力灰度策略",
-  PAGE_ACTIVATION_POLICY: "页面开通设置",
   ROLE: "角色"
 };
 
@@ -56,20 +55,20 @@ export const auditActionLabelMap: Record<PublishAuditLog["action"], string> = {
   RESOLVE: "处理完成"
 };
 
-export const triggerResultLabelMap: Record<TriggerLogItem["triggerResult"], string> = {
+export const triggerResultLabelMap: Record<PromptTriggerResult, string> = {
   HIT: "命中",
   MISS: "未命中",
   FAILED: "失败"
 };
 
-export const triggerSourceLabelMap: Record<ExecutionLogItem["triggerSource"], string> = {
+export const triggerSourceLabelMap: Record<JobExecutionTriggerSource, string> = {
   PROMPT_CONFIRM: "提示确认",
   FLOATING_BUTTON: "悬浮触发",
   AUTO: "自动触发",
   MANUAL_RETRY: "人工重试"
 };
 
-export const executionResultLabelMap: Record<ExecutionLogItem["result"], string> = {
+export const executionResultLabelMap: Record<JobExecutionResult, string> = {
   SUCCESS: "成功",
   PARTIAL_SUCCESS: "部分成功",
   FAILED: "失败"

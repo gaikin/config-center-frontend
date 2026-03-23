@@ -2,19 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { JobNodeDefinition } from "../../types";
 import { buildFormValuesFromNode, buildNodeConfigFromForm } from "./jobScenesPageShared";
 
-function buildListLookupNode(configJson: string): JobNodeDefinition {
-  return {
-    id: 1001,
-    sceneId: 9,
-    nodeType: "list_lookup",
-    name: "名单检索1",
-    orderNo: 2,
-    enabled: true,
-    configJson,
-    updatedAt: "2026-03-19T00:00:00.000Z"
-  };
-}
-
 function buildPageSetNode(configJson: string): JobNodeDefinition {
   return {
     id: 2001,
@@ -79,34 +66,6 @@ function buildScriptNode(configJson: string): JobNodeDefinition {
     updatedAt: "2026-03-19T00:00:00.000Z"
   };
 }
-
-describe("list lookup input source type", () => {
-  it("infers REFERENCE type from legacy template value", () => {
-    const values = buildFormValuesFromNode(buildListLookupNode("{\"inputSource\":\"{{node_1_api_result}}\"}"));
-
-    expect(values.inputSourceType).toBe("REFERENCE");
-    expect(values.inputSource).toBe("{{node_1_api_result}}");
-  });
-
-  it("keeps inputSourceType in saved config", () => {
-    const config = buildNodeConfigFromForm({
-      name: "名单检索1",
-      nodeType: "list_lookup",
-      enabled: true,
-      listDataId: 1,
-      matchColumn: "customer_id",
-      inputSourceType: "STRING",
-      inputSource: "customer_id",
-      resultKeys: ["risk_level", "risk_score"],
-      resultKey: "risk_match"
-    });
-
-    expect(config.inputSourceType).toBe("STRING");
-    expect(config.inputSource).toBe("customer_id");
-    expect(config.resultKeys).toEqual(["risk_level", "risk_score"]);
-    expect(config.resultKey).toBe("risk_level");
-  });
-});
 
 describe("page set value type", () => {
   it("infers REFERENCE valueType from legacy template value", () => {

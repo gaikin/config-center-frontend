@@ -1,0 +1,137 @@
+﻿{
+    "timestamp":  "2026-03-23 15:08:49",
+    "mode":  "mysql",
+    "total":  25,
+    "passed":  25,
+    "failed":  0,
+    "passes":  [
+                   {
+                       "module":  "Health",
+                       "step":  "backend mysql health check",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Auth",
+                       "step":  "login with user_inf and dpt_id context",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page menu + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page resource + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page element + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create business field + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Page",
+                       "step":  "create page-field binding + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Interface",
+                       "step":  "create interface + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Interface",
+                       "step":  "update interface status + echo",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Rule",
+                       "step":  "create rule + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Rule",
+                       "step":  "rule share/status/preview + condition workflow",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "JobScene",
+                       "step":  "create scene + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "JobScene",
+                       "step":  "scene share/status/clone + node workflow",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "DataProcessor",
+                       "step":  "create processor + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "DataProcessor",
+                       "step":  "update processor status",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "ContextVariable",
+                       "step":  "create variable + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "ContextVariable",
+                       "step":  "update variable status",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "create general config + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "create menu sdk policy + list echo + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Permission",
+                       "step":  "create resource + role + grants + members + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Permission",
+                       "step":  "clone role + toggle status + session echo",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Publish",
+                       "step":  "publish validate/logs + mysql persistence",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Runtime",
+                       "step":  "prompt/job runtime logs endpoints",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "Governance",
+                       "step":  "dashboard summary endpoints",
+                       "status":  "PASS"
+                   },
+                   {
+                       "module":  "FrontendContract",
+                       "step":  "instant-publish no pending-items contract required",
+                       "status":  "PASS"
+                   }
+               ],
+    "issues":  [
+
+               ]
+}

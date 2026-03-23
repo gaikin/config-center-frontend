@@ -1,5 +1,7 @@
-import { Alert, Input, Modal, Segmented, Select, Space, Spin, Table, Typography } from "antd";
-import type { ReactNode } from "react";
+import { Alert, Button, DatePicker, Modal, Segmented, Select, Space, Spin, Table, Typography } from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
+import { useEffect, type ReactNode } from "react";
 import type { EffectiveActionMeta, EffectiveScopeMode } from "../effectiveFlow";
 import type { PublishValidationReport, ValidationReport } from "../types";
 
@@ -24,6 +26,57 @@ type EffectiveConfirmModalProps = {
   onCancel: () => void;
   onConfirm: () => void;
 };
+
+const DATE_TIME_FORMAT = "YYYY-MM-DD HH:mm";
+type EffectiveShortcutKey = "THIS_MONTH" | "NEXT_MONTH" | "THIS_YEAR" | "NEXT_YEAR";
+const effectiveShortcutOptions: Array<{ key: EffectiveShortcutKey; label: string }> = [
+  { key: "THIS_MONTH", label: "本月" },
+  { key: "NEXT_MONTH", label: "下月" },
+  { key: "THIS_YEAR", label: "本年" },
+  { key: "NEXT_YEAR", label: "明年" }
+];
+const { RangePicker } = DatePicker;
+
+function toDateTimePickerValue(value: string): Dayjs | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const normalized = trimmed.replace(/\//g, "-");
+  const parsed = dayjs(normalized.includes("T") ? normalized : normalized.replace(" ", "T"));
+  return parsed.isValid() ? parsed : null;
+}
+
+function formatDateTimePickerValue(value: Dayjs | null | undefined) {
+  return value ? value.format(DATE_TIME_FORMAT) : "";
+}
+
+function resolveEffectiveShortcutRange(shortcut: EffectiveShortcutKey, base: Dayjs = dayjs()) {
+  if (shortcut === "THIS_MONTH") {
+    return {
+      start: base.startOf("month"),
+      end: base.endOf("month")
+    };
+  }
+  if (shortcut === "NEXT_MONTH") {
+    const nextMonth = base.add(1, "month");
+    return {
+      start: nextMonth.startOf("month"),
+      end: nextMonth.endOf("month")
+    };
+  }
+  if (shortcut === "THIS_YEAR") {
+    return {
+      start: base.startOf("year"),
+      end: base.endOf("year")
+    };
+  }
+  const nextYear = base.add(1, "year");
+  return {
+    start: nextYear.startOf("year"),
+    end: nextYear.endOf("year")
+  };
+}
 
 export function EffectiveConfirmModal({
   open,
@@ -57,6 +110,19 @@ export function EffectiveConfirmModal({
     effectiveEndAt.trim().length > 0 &&
     effectiveStartAt.trim() > effectiveEndAt.trim();
   const blockingItems = validationReport?.items.filter((item) => !item.passed) ?? [];
+  const startAtValue = toDateTimePickerValue(effectiveStartAt);
+  const endAtValue = toDateTimePickerValue(effectiveEndAt);
+  const effectiveRangeValue: [Dayjs | null, Dayjs | null] | null = startAtValue || endAtValue ? [startAtValue, endAtValue] : null;
+
+  useEffect(() => {
+    if (!open || !requiresEffectiveConfig) {
+      return;
+    }
+    if (effectiveStartAt.trim()) {
+      return;
+    }
+    onEffectiveStartAtChange?.(formatDateTimePickerValue(dayjs()));
+  }, [effectiveStartAt, onEffectiveStartAtChange, open, requiresEffectiveConfig]);
 
   return (
     <Modal
@@ -84,15 +150,37 @@ export function EffectiveConfirmModal({
             <Space direction="vertical" style={{ width: "100%" }} size={8}>
               <CardLike title="规则生效时间">
                 <Space direction="vertical" style={{ width: "100%" }} size={8}>
-                  <Input
-                    placeholder="开始时间，如 2026-03-16 14:00"
-                    value={effectiveStartAt}
-                    onChange={(event) => onEffectiveStartAtChange?.(event.target.value)}
-                  />
-                  <Input
-                    placeholder="结束时间，如 2026-12-31 23:59"
-                    value={effectiveEndAt}
-                    onChange={(event) => onEffectiveEndAtChange?.(event.target.value)}
+                  <Space wrap>
+                    <Typography.Text type="secondary">快捷填充</Typography.Text>
+                    {effectiveShortcutOptions.map((item) => (
+                      <Button
+                        key={item.key}
+                        size="small"
+                        onClick={() => {
+                          const baseStart = toDateTimePickerValue(effectiveStartAt) ?? dayjs();
+                          const { end } = resolveEffectiveShortcutRange(item.key, baseStart);
+                          if (!effectiveStartAt.trim()) {
+                            onEffectiveStartAtChange?.(formatDateTimePickerValue(baseStart));
+                          }
+                          onEffectiveEndAtChange?.(formatDateTimePickerValue(end));
+                        }}
+                      >
+                        {item.label}
+                      </Button>
+                    ))}
+                  </Space>
+                  <RangePicker
+                    showTime={{ format: "HH:mm", minuteStep: 5 }}
+                    format={DATE_TIME_FORMAT}
+                    placeholder={["开始时间", "结束时间"]}
+                    inputReadOnly
+                    style={{ width: "100%" }}
+                    value={effectiveRangeValue}
+                    getPopupContainer={(triggerNode) => triggerNode.parentElement ?? document.body}
+                    onChange={(values) => {
+                      onEffectiveStartAtChange?.(formatDateTimePickerValue(values?.[0] ?? null));
+                      onEffectiveEndAtChange?.(formatDateTimePickerValue(values?.[1] ?? null));
+                    }}
                   />
                   <Typography.Text type="secondary">
                     这里配置的是规则自身生效时间范围；确认后当前版本立即生效，并按该时间范围运行。

@@ -2,14 +2,19 @@ import {
   seedJobExecutions,
   seedJobNodeRunLogs,
   seedJobNodes,
+  seedContextVariables,
   seedRuleConditionGroups,
   seedRuleConditions
 } from "../mock/seeds";
+import { evaluateContextVariableValue } from "../contextVariables";
+import { configCenterService } from "./configCenterService";
+import { backendRequest } from "./backendApi";
 import type {
-  ExecutionLogItem,
+  DataProcessorDefinition,
   JobExecutionSummary,
   JobNodeDefinition,
   JobNodeRunLog,
+  JobExecutionTriggerSource,
   RuleCondition,
   RuleConditionGroup,
   RuleLogicType,
@@ -19,6 +24,8 @@ import type {
   RulePreviewResult,
   RulePreviewTrace
 } from "../types";
+
+const isMockModeEnabled = import.meta.env.VITE_ENABLE_MOCK_MODE === "true";
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
@@ -40,33 +47,48 @@ function nextId(items: Array<{ id: number }>) {
 const store = {
   groups: structuredClone(seedRuleConditionGroups),
   conditions: structuredClone(seedRuleConditions),
+  contextVariables: structuredClone(seedContextVariables),
   nodes: structuredClone(seedJobNodes),
   executions: structuredClone(seedJobExecutions),
   nodeLogs: structuredClone(seedJobNodeRunLogs)
 };
 
-function preprocessValue(value: string, preprocessorIds: number[]): string {
-  let current = value;
-  for (const id of preprocessorIds) {
-    if (id === 3501) {
-      current = current.trim();
-      continue;
+function compileTransform(functionCode: string) {
+  try {
+    const factory = new Function(`${functionCode}\nreturn transform;`) as () => unknown;
+    const resolved = factory();
+    if (typeof resolved !== "function") {
+      throw new Error("transform 不是函数");
     }
-    if (id === 3502) {
-      const date = new Date(current);
-      if (!Number.isNaN(date.getTime())) {
-        current = date.toISOString().slice(0, 10);
-      }
-      continue;
-    }
-    if (id === 3503) {
-      const digits = current.replace(/\D/g, "");
-      if (digits.length >= 7) {
-        current = `${digits.slice(0, 3)}****${digits.slice(-4)}`;
-      }
-    }
+    return resolved as (...args: unknown[]) => unknown;
+  } catch (error) {
+    throw new Error(error instanceof Error ? `数据处理函数解析失败: ${error.message}` : "数据处理函数解析失败");
   }
-  return current;
+}
+
+function applyDataProcessorChain(
+  value: string,
+  operand: RuleOperand,
+  dataProcessorById: Map<number, DataProcessorDefinition>
+) {
+  const configs =
+    operand.dataProcessorConfigs && operand.dataProcessorConfigs.length > 0
+      ? operand.dataProcessorConfigs
+      : (operand.dataProcessorIds ?? []).map((id) => ({ dataProcessorId: id, args: [] as string[] }));
+
+  let current: unknown = value;
+  for (const config of configs) {
+    const processor = dataProcessorById.get(config.dataProcessorId);
+    if (!processor) {
+      throw new Error(`数据处理不存在: ${config.dataProcessorId}`);
+    }
+    const transform = compileTransform(processor.functionCode);
+    const expectedArgCount = Math.max(0, processor.paramCount - 1);
+    const args = Array.isArray(config.args) ? config.args : [];
+    const normalizedArgs = Array.from({ length: expectedArgCount }, (_, index) => args[index] ?? "");
+    current = transform(current, ...normalizedArgs);
+  }
+  return toDisplayValue(current);
 }
 
 function deriveInterfaceFieldKey(path?: string) {
@@ -84,21 +106,27 @@ function deriveInterfaceFieldKey(path?: string) {
   return segments[segments.length - 1] ?? "";
 }
 
-function resolveOperand(operand: RuleOperand | undefined, input: RulePreviewInput): string {
+function resolveOperand(
+  operand: RuleOperand | undefined,
+  input: RulePreviewInput,
+  dataProcessorById: Map<number, DataProcessorDefinition>
+): string {
   if (!operand) {
     return "";
   }
-  const preprocessorIds =
-    operand.preprocessorIds.length > 0
-      ? operand.preprocessorIds
-      : (operand.preprocessorConfigs ?? []).map((item) => item.preprocessorId);
   let raw = "";
   if (operand.sourceType === "CONST") {
     raw = operand.constValue ?? operand.key;
   } else if (operand.sourceType === "PAGE_FIELD") {
     raw = input.pageFields[operand.key] ?? "";
   } else if (operand.sourceType === "CONTEXT") {
-    raw = input.context[operand.key] ?? "";
+    const directValue = input.context[operand.key];
+    if (typeof directValue === "string" && directValue.trim()) {
+      raw = directValue;
+    } else {
+      const definition = store.contextVariables.find((item) => item.status !== "DISABLED" && item.key === operand.key);
+      raw = definition ? evaluateContextVariableValue(definition, input.context) : "";
+    }
   } else if (operand.sourceType === "INTERFACE_FIELD") {
     const byBindingPath = deriveInterfaceFieldKey(operand.interfaceBinding?.outputPath);
     const fallback: Record<string, string> = {
@@ -115,49 +143,9 @@ function resolveOperand(operand: RuleOperand | undefined, input: RulePreviewInpu
       fallback[byBindingPath] ??
       "";
   } else if (operand.sourceType === "LIST_LOOKUP_FIELD") {
-    const binding = operand.listBinding;
-    const resultField = binding?.resultField?.trim() || operand.key;
-    const matchers =
-      binding?.matchers && binding.matchers.length > 0
-        ? binding.matchers
-        : binding?.matchColumn
-          ? [
-              {
-                matchColumn: binding.matchColumn,
-                sourceType: binding.lookupSourceType ?? "PAGE_FIELD",
-                sourceValue: binding.lookupSourceValue ?? ""
-              }
-            ]
-          : [];
-    const matched = matchers.length > 0 && matchers.every((item) => resolveLookupMatcherValue(item.sourceType, item.sourceValue, input).trim());
-    const fallbackByField: Record<string, string> = {
-      risk_level: "HIGH",
-      risk_score: "92",
-      risk_tag: "WATCH",
-      control_level: "A",
-      customer_level: "S",
-      expire_at: "2026-12-31"
-    };
-    raw = matched ? input.interfaceFields[resultField] ?? fallbackByField[resultField] ?? `${binding?.listDataName ?? "名单"}:${resultField}` : "";
+    raw = "";
   }
-  return preprocessValue(raw, preprocessorIds);
-}
-
-function resolveLookupMatcherValue(
-  sourceType: NonNullable<NonNullable<RuleOperand["listBinding"]>["lookupSourceType"]>,
-  sourceValue: string,
-  input: RulePreviewInput
-) {
-  if (sourceType === "CONST") {
-    return sourceValue;
-  }
-  if (sourceType === "PAGE_FIELD") {
-    return input.pageFields[sourceValue] ?? "";
-  }
-  if (sourceType === "CONTEXT") {
-    return input.context[sourceValue] ?? "";
-  }
-  return input.interfaceFields[sourceValue] ?? input.interfaceFields[deriveInterfaceFieldKey(sourceValue)] ?? "";
+  return applyDataProcessorChain(raw, operand, dataProcessorById);
 }
 
 function compareValues(operator: RuleOperator, left: string, right: string): { passed: boolean; reason: string } {
@@ -270,7 +258,11 @@ function compareValues(operator: RuleOperator, left: string, right: string): { p
   };
 }
 
-function evaluateRule(ruleId: number, input: RulePreviewInput): RulePreviewResult {
+function evaluateRule(
+  ruleId: number,
+  input: RulePreviewInput,
+  dataProcessorById: Map<number, DataProcessorDefinition>
+): RulePreviewResult {
   const groups = store.groups.filter((item) => item.ruleId === ruleId);
   const conditions = store.conditions.filter((item) => item.ruleId === ruleId);
   const traces: RulePreviewTrace[] = [];
@@ -295,8 +287,8 @@ function evaluateRule(ruleId: number, input: RulePreviewInput): RulePreviewResul
     const results: boolean[] = [];
 
     for (const condition of ownConditions) {
-      const leftValue = resolveOperand(condition.left, input);
-      const rightValue = resolveOperand(condition.right, input);
+      const leftValue = resolveOperand(condition.left, input, dataProcessorById);
+      const rightValue = resolveOperand(condition.right, input, dataProcessorById);
       const compareResult = compareValues(condition.operator, leftValue, rightValue);
       const passed = compareResult.passed;
       traces.push({
@@ -508,40 +500,7 @@ function executeRuntimeNode(
   }
 
   if (node.nodeType === "list_lookup") {
-    const inputSource = typeof config.inputSource === "string" ? config.inputSource : "";
-    const inputSourceType = config.inputSourceType === "REFERENCE" ? "REFERENCE" : "STRING";
-    const resolvedInput = resolveBindingValue(inputSourceType, inputSource, runtimeVariables);
-    const rawResultKeys = Array.isArray(config.resultKeys)
-      ? (config.resultKeys as unknown[])
-          .map((item) => (typeof item === "string" ? item.trim() : ""))
-          .filter(Boolean)
-      : typeof config.resultKey === "string" && config.resultKey.trim()
-        ? [config.resultKey.trim()]
-        : ["list_lookup_result"];
-    const resultKeys = Array.from(new Set(rawResultKeys));
-    const outputSummaries: string[] = [];
-
-    for (const rawKey of resultKeys) {
-      const machineKey = normalizeVariableSegment(rawKey) || "list_lookup_result";
-      const variableKey = `node_${node.id}_${machineKey}`;
-      const compact = machineKey.toLowerCase();
-      let value = resolvedInput || "MATCHED";
-      if (compact.includes("score")) {
-        value = "92";
-      } else if (compact.includes("level")) {
-        value = "HIGH";
-      } else if (compact.includes("tag")) {
-        value = "WATCH";
-      } else if (compact.includes("expire")) {
-        value = "2026-12-31";
-      }
-      runtimeVariables[variableKey] = value;
-      outputSummaries.push(`${rawKey}={{${variableKey}}}=${value}`);
-    }
-
-    return {
-      detail: `名单输出 ${outputSummaries.join("；")}`
-    };
+    throw new Error("名单检索节点已下线");
   }
 
   if (node.nodeType === "js_script") {
@@ -645,7 +604,7 @@ function executeRuntimeNode(
 function executeSceneInternal(
   sceneId: number,
   sceneName: string,
-  triggerSource: ExecutionLogItem["triggerSource"],
+  triggerSource: JobExecutionTriggerSource,
   options?: { ignoreForceFail?: boolean }
 ): JobExecutionSummary {
   const nodes = store.nodes
@@ -753,16 +712,45 @@ function executeSceneInternal(
 export const workflowService = {
   async listRuleConditionGroups(ruleId: number): Promise<RuleConditionGroup[]> {
     await sleep(100);
+    if (!isMockModeEnabled) {
+      const rows = await backendRequest<RuleConditionGroup[]>(`/api/control/rules/${ruleId}/condition-groups`);
+      store.groups = [
+        ...store.groups.filter((item) => item.ruleId !== ruleId),
+        ...rows
+      ];
+      return structuredClone(rows);
+    }
     return structuredClone(store.groups.filter((item) => item.ruleId === ruleId));
   },
 
   async listRuleConditions(ruleId: number): Promise<RuleCondition[]> {
     await sleep(100);
+    if (!isMockModeEnabled) {
+      const rows = await backendRequest<RuleCondition[]>(`/api/control/rules/${ruleId}/conditions`);
+      store.conditions = [
+        ...store.conditions.filter((item) => item.ruleId !== ruleId),
+        ...rows
+      ];
+      return structuredClone(rows);
+    }
     return structuredClone(store.conditions.filter((item) => item.ruleId === ruleId));
   },
 
   async createRuleConditionGroup(ruleId: number, logicType: RuleLogicType, parentGroupId?: number): Promise<RuleConditionGroup> {
     await sleep(100);
+    if (!isMockModeEnabled) {
+      const row = await backendRequest<RuleConditionGroup>(`/api/control/rules/${ruleId}/condition-groups`, {
+        method: "POST",
+        body: JSON.stringify({
+          logicType,
+          parentGroupId
+        })
+      });
+      store.groups = store.groups.some((item) => item.id === row.id)
+        ? store.groups.map((item) => (item.id === row.id ? row : item))
+        : [row, ...store.groups];
+      return structuredClone(row);
+    }
     if (parentGroupId) {
       const parent = store.groups.find((item) => item.id === parentGroupId && item.ruleId === ruleId);
       if (!parent) {
@@ -786,11 +774,29 @@ export const workflowService = {
 
   async updateRuleConditionGroup(groupId: number, logicType: RuleLogicType): Promise<void> {
     await sleep(80);
+    if (!isMockModeEnabled) {
+      const row = await backendRequest<RuleConditionGroup>(`/api/control/rule-condition-groups/${groupId}`, {
+        method: "POST",
+        body: JSON.stringify({
+          logicType
+        })
+      });
+      store.groups = store.groups.map((item) => (item.id === row.id ? row : item));
+      return;
+    }
     store.groups = store.groups.map((item) => (item.id === groupId ? { ...item, logicType, updatedAt: nowIso() } : item));
   },
 
   async deleteRuleConditionGroup(groupId: number): Promise<void> {
     await sleep(80);
+    if (!isMockModeEnabled) {
+      await backendRequest<void>(`/api/control/rule-condition-groups/${groupId}/delete`, {
+        method: "POST"
+      });
+      store.groups = store.groups.filter((item) => item.id !== groupId);
+      store.conditions = store.conditions.filter((item) => item.groupId !== groupId);
+      return;
+    }
     const ids = new Set<number>();
     const walk = (id: number) => {
       ids.add(id);
@@ -807,6 +813,17 @@ export const workflowService = {
 
   async upsertRuleCondition(payload: Omit<RuleCondition, "updatedAt"> & { updatedAt?: string }): Promise<RuleCondition> {
     await sleep(120);
+    if (!isMockModeEnabled) {
+      const row = await backendRequest<RuleCondition>("/api/control/rule-conditions", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      const exists = store.conditions.some((item) => item.id === row.id);
+      store.conditions = exists
+        ? store.conditions.map((item) => (item.id === row.id ? row : item))
+        : [row, ...store.conditions.filter((item) => item.ruleId !== row.ruleId || item.id === row.id)];
+      return structuredClone(row);
+    }
     const group = store.groups.find((item) => item.id === payload.groupId);
     if (!group || group.ruleId !== payload.ruleId) {
       throw new Error("条件组不存在或不属于当前规则");
@@ -825,11 +842,24 @@ export const workflowService = {
 
   async deleteRuleCondition(conditionId: number): Promise<void> {
     await sleep(80);
+    if (!isMockModeEnabled) {
+      await backendRequest<void>(`/api/control/rule-conditions/${conditionId}`, {
+        method: "POST"
+      });
+      store.conditions = store.conditions.filter((item) => item.id !== conditionId);
+      return;
+    }
     store.conditions = store.conditions.filter((item) => item.id !== conditionId);
   },
 
   async cloneRuleLogic(sourceRuleId: number, targetRuleId: number): Promise<void> {
     await sleep(140);
+    if (!isMockModeEnabled) {
+      await backendRequest<void>(`/api/control/rules/${sourceRuleId}/clone-logic`, {
+        method: "POST",
+        body: JSON.stringify({ targetRuleId })
+      });
+    }
     const sourceGroups = store.groups
       .filter((item) => item.ruleId === sourceRuleId)
       .sort((a, b) => a.id - b.id);
@@ -878,17 +908,39 @@ export const workflowService = {
 
   async previewRuleWithInput(ruleId: number, input: RulePreviewInput): Promise<RulePreviewResult> {
     await sleep(140);
-    return evaluateRule(ruleId, input);
+    const dataProcessors = await configCenterService.listDataProcessors();
+    const dataProcessorById = new Map(dataProcessors.map((item) => [item.id, item] as const));
+    return evaluateRule(ruleId, input, dataProcessorById);
   },
 
   async listJobNodes(sceneId: number): Promise<JobNodeDefinition[]> {
     await sleep(100);
+    if (!isMockModeEnabled) {
+      const rows = await backendRequest<JobNodeDefinition[]>(`/api/control/job-scenes/${sceneId}/nodes`);
+      store.nodes = [
+        ...store.nodes.filter((item) => item.sceneId !== sceneId),
+        ...rows
+      ];
+      return structuredClone(rows);
+    }
     return structuredClone(store.nodes.filter((item) => item.sceneId === sceneId).sort((a, b) => a.orderNo - b.orderNo));
   },
 
-  async upsertJobNode(payload: Omit<JobNodeDefinition, "updatedAt"> & { updatedAt?: string }): Promise<JobNodeDefinition> {
+  async upsertJobNode(
+    payload: Omit<JobNodeDefinition, "id" | "updatedAt"> & { id?: number; updatedAt?: string }
+  ): Promise<JobNodeDefinition> {
     await sleep(110);
+    if (!isMockModeEnabled) {
+      const row = await backendRequest<JobNodeDefinition>(`/api/control/job-scenes/${payload.sceneId}/nodes`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      const exists = store.nodes.some((item) => item.id === row.id);
+      store.nodes = exists ? store.nodes.map((item) => (item.id === row.id ? row : item)) : [row, ...store.nodes];
+      return structuredClone(row);
+    }
     const next: JobNodeDefinition = {
+      id: payload.id ?? nextId(store.nodes),
       ...payload,
       updatedAt: payload.updatedAt ?? nowIso()
     };
@@ -899,10 +951,17 @@ export const workflowService = {
 
   async deleteJobNode(nodeId: number): Promise<void> {
     await sleep(80);
+    if (!isMockModeEnabled) {
+      await backendRequest<void>(`/api/control/job-nodes/${nodeId}`, {
+        method: "POST"
+      });
+      store.nodes = store.nodes.filter((item) => item.id !== nodeId);
+      return;
+    }
     store.nodes = store.nodes.filter((item) => item.id !== nodeId);
   },
 
-  async executeJobScene(sceneId: number, sceneName: string, triggerSource: ExecutionLogItem["triggerSource"]): Promise<JobExecutionSummary> {
+  async executeJobScene(sceneId: number, sceneName: string, triggerSource: JobExecutionTriggerSource): Promise<JobExecutionSummary> {
     await sleep(160);
     return executeSceneInternal(sceneId, sceneName, triggerSource);
   },
@@ -926,3 +985,4 @@ export const workflowService = {
     return structuredClone(store.nodeLogs.filter((item) => item.executionId === executionId));
   }
 };
+

@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Space, Tabs, Typography } from "antd";
+import { Alert, Button, Space, Tabs, Typography } from "antd";
 import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { RulesPage } from "../RulesPage/RulesPage";
@@ -47,32 +47,30 @@ export function PromptsPage() {
 
       {tips ? <Alert type="info" showIcon message={tips.message} description={tips.description} style={{ marginBottom: 12 }} /> : null}
 
-      <Card>
-        <Tabs
-          destroyInactiveTabPane
-          items={[
-            {
-              key: "rules",
-              label: "规则列表",
-              children: (
-                <RulesPage
-                  embedded
-                  mode="PAGE_RULE"
-                  initialPageResourceId={hasPresetPage ? pageResourceId : undefined}
-                  initialTemplateRuleId={hasPresetTemplate ? templateRuleId : undefined}
-                  initialSceneId={hasPresetScene ? sceneId : undefined}
-                  autoOpenCreate={autoOpenCreate}
-                />
-              )
-            },
-            {
-              key: "templates",
-              label: "模板复用",
-              children: <RulesPage embedded mode="TEMPLATE" />
-            }
-          ]}
-        />
-      </Card>
+      <Tabs
+        destroyInactiveTabPane
+        items={[
+          {
+            key: "rules",
+            label: "规则列表",
+            children: (
+              <RulesPage
+                embedded
+                mode="PAGE_RULE"
+                initialPageResourceId={hasPresetPage ? pageResourceId : undefined}
+                initialTemplateRuleId={hasPresetTemplate ? templateRuleId : undefined}
+                initialSceneId={hasPresetScene ? sceneId : undefined}
+                autoOpenCreate={autoOpenCreate}
+              />
+            )
+          },
+          {
+            key: "templates",
+            label: "模板复用",
+            children: <RulesPage embedded mode="TEMPLATE" />
+          }
+        ]}
+      />
     </div>
   );
 }

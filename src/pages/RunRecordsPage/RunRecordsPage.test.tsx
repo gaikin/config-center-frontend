@@ -11,8 +11,8 @@ describe("RunRecordsPage", () => {
       </MemoryRouter>
     );
 
-    expect(html).toContain("提示记录");
-    expect(html).toContain("作业记录");
+    expect(html).toContain("提示触发日志");
+    expect(html).toContain("作业运行记录");
     expect(html).toContain("执行结果");
   });
 

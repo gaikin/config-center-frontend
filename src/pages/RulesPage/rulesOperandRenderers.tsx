@@ -1,5 +1,5 @@
 import { Input, Select } from "antd";
-import { OPERAND_PILL_WIDTH, contextOptions, resolveOperandSummary } from "./rulesPageShared";
+import { OPERAND_PILL_WIDTH, resolveOperandSummary } from "./rulesPageShared";
 import type {
   InterfaceInputBindingDraft,
   InterfaceInputParamDraft,
@@ -51,6 +51,7 @@ type InterfaceInputValueEditorProps = {
   param: InterfaceInputParamDraft;
   binding: InterfaceInputBindingDraft;
   pageFieldOptions: RulePageFieldOption[];
+  contextVariableOptions: Array<{ label: string; value: string }>;
   updateInterfaceInputValue: (paramName: string, patch: Partial<InterfaceInputBindingDraft>) => void;
 };
 
@@ -58,10 +59,11 @@ export function InterfaceInputValueEditor({
   param,
   binding,
   pageFieldOptions,
+  contextVariableOptions,
   updateInterfaceInputValue
 }: InterfaceInputValueEditorProps) {
   const value = binding.sourceValue;
   if (binding.sourceType === "PAGE_FIELD") return <Select showSearch allowClear placeholder="选择页面字段" value={value || undefined} options={pageFieldOptions} optionFilterProp="label" onChange={(next) => updateInterfaceInputValue(param.name, { sourceValue: (next as string) ?? "" })} />;
-  if (binding.sourceType === "CONTEXT") return <Select showSearch allowClear placeholder="选择上下文变量" value={value || undefined} options={contextOptions.map((item) => ({ label: item, value: item }))} onChange={(next) => updateInterfaceInputValue(param.name, { sourceValue: (next as string) ?? "" })} />;
+  if (binding.sourceType === "CONTEXT") return <Select showSearch allowClear placeholder="选择上下文变量" value={value || undefined} options={contextVariableOptions} onChange={(next) => updateInterfaceInputValue(param.name, { sourceValue: (next as string) ?? "" })} />;
   return <Input value={value} placeholder={binding.sourceType === "INTERFACE_FIELD" ? "输入接口输出标识" : "输入固定值"} onChange={(event) => updateInterfaceInputValue(param.name, { sourceValue: event.target.value })} />;
 }

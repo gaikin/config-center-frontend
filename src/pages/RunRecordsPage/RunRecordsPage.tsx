@@ -1,4 +1,4 @@
-import { Alert, Card, Col, Empty, Input, Row, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Col, Empty, Input, Row, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import { executionResultLabelMap, promptModeLabelMap, triggerSourceLabelMap } from "../../enumLabels";
 import { formatDurationMs } from "./runRecordsPageShared";
 import { useRunRecordsPageModel } from "./useRunRecordsPageModel";
@@ -134,7 +134,7 @@ function renderPromptTable(model: ReturnType<typeof useRunRecordsPageModel>) {
       rowKey="id"
       loading={promptState.loading}
       dataSource={promptRows}
-      locale={{ emptyText: <Empty description="当前筛选条件下暂无提示命中记录" /> }}
+      locale={{ emptyText: <Empty description="当前筛选条件下暂无提示触发日志" /> }}
       pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
       columns={[
         { title: "规则名", dataIndex: "ruleName", width: 180 },
@@ -214,39 +214,37 @@ export function RunRecordsPage() {
     <div data-section="run-record-center">
       <Typography.Title level={4}>运行记录中心</Typography.Title>
       <Typography.Paragraph type="secondary">
-        支持按名称、状态、时间、页面、机构查询提示命中记录和作业执行记录。
+        支持按名称、状态、时间、页面、机构查询提示触发日志和作业运行记录。
       </Typography.Paragraph>
 
       {resourceState.error ? <Alert type="warning" showIcon message="页面资源加载失败" description={resourceState.error} /> : null}
 
-      <Card>
-        <Tabs
-          activeKey={activeTab}
-          onChange={(value) => setActiveTab(value as "prompts" | "jobs")}
-          items={[
-            {
-              key: "prompts",
-              label: "提示记录",
-              children: (
-                <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  {renderPromptFilters(model)}
-                  {renderPromptTable(model)}
-                </Space>
-              )
-            },
-            {
-              key: "jobs",
-              label: "作业记录",
-              children: (
-                <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  {renderJobFilters(model)}
-                  {renderJobTable(model)}
-                </Space>
-              )
-            }
-          ]}
-        />
-      </Card>
+      <Tabs
+        activeKey={activeTab}
+        onChange={(value) => setActiveTab(value as "prompts" | "jobs")}
+        items={[
+          {
+            key: "prompts",
+            label: "提示触发日志",
+            children: (
+              <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                {renderPromptFilters(model)}
+                {renderPromptTable(model)}
+              </Space>
+            )
+          },
+          {
+            key: "jobs",
+            label: "作业运行记录",
+            children: (
+              <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                {renderJobFilters(model)}
+                {renderJobTable(model)}
+              </Space>
+            )
+          }
+        ]}
+      />
     </div>
   );
 }
